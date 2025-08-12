@@ -76,36 +76,36 @@ resource "kubernetes_config_map" "infrastructure_dashboard" {
   depends_on = [helm_release.prometheus_stack]
 }
 
-resource "kubernetes_config_map" "infrastructure_professional_dashboard" {
+resource "kubernetes_config_map" "infrastructure_devops_dashboard" {
   metadata {
-    name      = "infrastructure-professional-dashboard"
+    name      = "infrastructure-devops-dashboard"
     namespace = var.monitoring_namespace
     labels = {
       "grafana_dashboard" = "1"
     }
     annotations = {
-      "grafana_folder" = "Professional Monitoring"
+      "grafana_folder" = "Devops Monitoring"
     }
   }
   data = {
-    "infrastructure-professional.json" = jsonencode(jsondecode(file("${path.module}/dashboards/infrastructure-professional.json")).dashboard)
+    "infrastructure.json" = jsonencode(jsondecode(file("${path.module}/dashboards/infrastructure.json")).dashboard)
   }
   depends_on = [helm_release.prometheus_stack]
 }
 
-resource "kubernetes_config_map" "jenkins_professional_dashboard" {
+resource "kubernetes_config_map" "jenkins_dashboard" {
   metadata {
-    name      = "jenkins-professional-dashboard"
+    name      = "jenkins-dashboard"
     namespace = var.monitoring_namespace
     labels = {
       "grafana_dashboard" = "1"
     }
     annotations = {
-      "grafana_folder" = "Professional Monitoring"
+      "grafana_folder" = "Devops Monitoring"
     }
   }
   data = {
-    "jenkins-professional.json" = jsonencode(jsondecode(file("${path.module}/dashboards/jenkins-professional.json")).dashboard)
+    "jenkins.json" = jsonencode(jsondecode(file("${path.module}/dashboards/jenkins.json")).dashboard)
   }
   depends_on = [helm_release.prometheus_stack]
 }
@@ -118,53 +118,12 @@ resource "kubernetes_config_map" "flask_application_dashboard" {
       "grafana_dashboard" = "1"
     }
     annotations = {
-      "grafana_folder" = "Professional Monitoring"
+      "grafana_folder" = "Devops Monitoring"
     }
   }
   data = {
     "flask-application.json" = jsonencode(jsondecode(file("${path.module}/dashboards/flask-application.json")).dashboard)
   }
+
   depends_on = [helm_release.prometheus_stack]
-}
-
-################################################################################
-# WAIT FOR PROMETHEUSRULE CRD
-################################################################################
-
-resource "null_resource" "wait_for_prometheusrule_crd" {
-  provisioner "local-exec" {
-    command = <<EOT
-      for i in {1..30}; do
-        kubectl get crd prometheusrules.monitoring.coreos.com && exit 0
-        echo "Waiting for PrometheusRule CRD to be available..."
-        sleep 5
-      done
-      echo "CRD prometheusrules.monitoring.coreos.com not found after 150s" >&2
-      exit 1
-    EOT
-  }
-  depends_on = [helm_release.prometheus_stack]
-}
-
-################################################################################
-# Alerts for Prometheus (using PrometheusRule)
-################################################################################
-resource "kubernetes_manifest" "professional_alerts" {
-  manifest = {
-    apiVersion = "monitoring.coreos.com/v1"
-    kind       = "PrometheusRule"
-    metadata = {
-      name      = "professional-alerts"
-      namespace = var.monitoring_namespace
-      labels = {
-        "prometheus" = "kube-prometheus"
-        "role"       = "alert-rules"
-      }
-    }
-    spec = yamldecode(file("${path.module}/alerts/professional-alerts.yaml"))
-  }
-  depends_on = [
-    helm_release.prometheus_stack,
-    null_resource.wait_for_prometheusrule_crd
-  ]
 }

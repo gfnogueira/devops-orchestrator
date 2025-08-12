@@ -98,7 +98,7 @@ grafana:
       memory: "512Mi"
       cpu: "500m"
   
-  # Automatic dashboards + professional dashboards
+  # Automatic dashboards
   sidecar:
     dashboards:
       enabled: true
@@ -118,34 +118,34 @@ grafana:
       searchNamespace: ALL
       label: prometheus_rule
   
-  # Pre-configured professional dashboards
+  # Pre-configured dashboards
   dashboardProviders:
     dashboardproviders.yaml:
       apiVersion: 1
       providers:
-      - name: 'professional-dashboards'
+      - name: 'devops-dashboards'
         orgId: 1
-        folder: 'Professional Monitoring'
+        folder: 'Devops Monitoring'
         type: file
         disableDeletion: false
         editable: true
         options:
-          path: /var/lib/grafana/dashboards/professional
-  
+          path: /var/lib/grafana/dashboards/devops
+
   dashboards:
-    professional-dashboards:
-      infrastructure-professional:
+    devops-dashboards:
+      infrastructure:
         gnetId: null
         revision: 1
         datasource: Prometheus
         json: |
-          ${indent(10, file("${path}/dashboards/infrastructure-professional.json"))}
-      jenkins-professional:
+          ${indent(10, file("${path}/dashboards/infrastructure.json"))}
+      jenkins:
         gnetId: null
         revision: 1
         datasource: Prometheus  
         json: |
-          ${indent(10, file("${path}/dashboards/jenkins-professional.json"))}
+          ${indent(10, file("${path}/dashboards/jenkins.json"))}
       flask-application:
         gnetId: null
         revision: 1

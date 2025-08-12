@@ -1,0 +1,172 @@
+pipeline {
+    agent {
+        kubernetes {
+            label 'devops-agent'
+            defaultContainer 'jnlp'
+            serviceAccount 'jenkins'
+        }
+    }
+
+    environment {
+        TOFU_VERSION = '1.8.4'
+        KUBECONFIG_PATH = '/tmp/kubeconfig'
+    }
+
+    options {
+        timeout(time: 40, unit: 'MINUTES')
+        disableConcurrentBuilds()
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out repository...'
+                checkout scm
+            }
+        }
+
+        stage('Setup') {
+            steps {
+                script {
+                    echo 'Validating agent environment...'
+                    sh '''
+                        set -eux
+                        echo "PATH: $PATH"
+                        ls -la /usr/local/bin/
+                        which tofu
+                        tofu version
+                        kubectl version --client
+                        kubectl cluster-info || true
+                        echo "Checking if observability-alerts directory exists..."
+                        ls -la opentofu/environments/infra-cluster/
+                        cd opentofu/environments/infra-cluster/observability-alerts
+                        pwd
+                        ls -la
+                    '''
+                }
+            }
+        }
+
+        stage('Initialize') {
+            steps {
+                script {
+                    echo 'Initializing OpenTofu...'
+                    sh '''
+                        cd opentofu/environments/infra-cluster/observability-alerts
+                        tofu init -upgrade
+                        tofu providers
+                    '''
+                }
+            }
+        }
+
+        stage('Validate') {
+            steps {
+                script {
+                    echo 'Validating OpenTofu configuration...'
+                    sh '''
+                        cd opentofu/environments/infra-cluster/observability-alerts
+                        tofu validate
+                    '''
+                }
+            }
+        }
+
+        stage('Plan') {
+            steps {
+                script {
+                    echo 'Creating OpenTofu execution plan...'
+                    dir('opentofu/environments/infra-cluster/observability-alerts') {
+                        def planStatus = sh(
+                            script: 'tofu plan -out=tfplan -detailed-exitcode',
+                            returnStatus: true
+                        )
+                        if (planStatus == 0) {
+                            echo 'No changes detected.'
+                        } else if (planStatus == 2) {
+                            echo 'Changes detected and plan created.'
+                        } else {
+                            error "Plan failed with exit code: ${planStatus}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Apply') {
+            when {
+                expression {
+                    def b = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+                    b == 'main' || b == 'master' || b.endsWith('/main') || b.endsWith('/master')
+                }
+            }
+            steps {
+                script {
+                    echo 'Applying OpenTofu changes...'
+                    dir('opentofu/environments/infra-cluster/observability-alerts') {
+                        sh 'tofu apply tfplan'
+                    }
+                }
+            }
+        }
+
+        stage('Destroy') {
+            when {
+                allOf {
+                    anyOf {
+                        branch 'main'
+                        branch 'master'  
+                    }
+                    environment name: 'DESTROY_ENVIRONMENT', value: 'true'
+                }
+            }
+            steps {
+                script {
+                    echo 'Destroying observability alerts...'
+                    sh '''
+                        cd opentofu/environments/infra-cluster/observability-alerts
+                        tofu destroy -auto-approve
+                    '''
+                }
+            }
+        }
+
+        stage('Validate Deployment') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'master'
+                }
+            }
+            steps {
+                script {
+                    echo 'Validating PrometheusRule deployment...'
+                    sh '''
+                        set -eux
+                        kubectl get prometheusrule devops-alerts -n monitoring
+                        kubectl describe prometheusrule devops-alerts -n monitoring
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                echo 'Cleaning up...'
+                try {
+                    sh 'rm -f opentofu/environments/infra-cluster/observability-alerts/tfplan'
+                } catch (Exception e) {
+                    echo "Cleanup failed, but continuing: ${e.message}"
+                }
+            }
+        }
+        success {
+            echo 'Observability alerts pipeline completed successfully! 🚀'
+        }
+        failure {
+            echo 'Observability alerts pipeline failed!'
+        }
+    }
+}
