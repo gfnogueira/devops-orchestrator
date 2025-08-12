@@ -1,0 +1,227 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "🔧 Jenkins & CI/CD Pipeline Dashboard",
+    "description": "Complete monitoring for Jenkins builds, agents, and pipeline performance",
+    "tags": ["jenkins", "cicd", "pipelines", "devops"],
+    "timezone": "browser",
+    "refresh": "15s",
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "🎯 Build Success Rate",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "(jenkins_builds_success_total / (jenkins_builds_success_total + jenkins_builds_failed_total)) * 100",
+            "legendFormat": "Success Rate %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 80},
+                {"color": "green", "value": 95}
+              ]
+            },
+            "unit": "percent"
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "⚡ Active Jenkins Agents",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 6,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "jenkins_node_online_total",
+            "legendFormat": "Online Agents"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "🚀 Pipeline Throughput",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 12,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "rate(jenkins_builds_total[1h]) * 3600",
+            "legendFormat": "Builds/Hour"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "⏱️ Average Build Time",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 18,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "jenkins_builds_duration_milliseconds_summary{quantile=\"0.5\"} / 1000 / 60",
+            "legendFormat": "Median Time (min)"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "📊 Build Results Over Time",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 4
+        },
+        "targets": [
+          {
+            "expr": "rate(jenkins_builds_success_total[5m])",
+            "legendFormat": "Successful Builds/sec"
+          },
+          {
+            "expr": "rate(jenkins_builds_failed_total[5m])",
+            "legendFormat": "Failed Builds/sec"
+          },
+          {
+            "expr": "rate(jenkins_builds_aborted_total[5m])",
+            "legendFormat": "Aborted Builds/sec"
+          }
+        ],
+        "legend": {
+          "show": true,
+          "placement": "bottom"
+        }
+      },
+      {
+        "id": 6,
+        "title": "⏰ Build Duration Distribution",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 4
+        },
+        "targets": [
+          {
+            "expr": "jenkins_builds_duration_milliseconds_summary{quantile=\"0.5\"} / 1000",
+            "legendFormat": "50th percentile"
+          },
+          {
+            "expr": "jenkins_builds_duration_milliseconds_summary{quantile=\"0.9\"} / 1000",
+            "legendFormat": "90th percentile"
+          },
+          {
+            "expr": "jenkins_builds_duration_milliseconds_summary{quantile=\"0.99\"} / 1000",
+            "legendFormat": "99th percentile"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Duration (seconds)",
+            "min": 0
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "🔧 Jenkins Queue Length",
+        "type": "graph",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 0,
+          "y": 12
+        },
+        "targets": [
+          {
+            "expr": "jenkins_queue_size_total",
+            "legendFormat": "Queue Size"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "🏃‍♂️ Active Jobs by Project",
+        "type": "table",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 12,
+          "y": 12
+        },
+        "targets": [
+          {
+            "expr": "jenkins_builds_last_build_duration_milliseconds",
+            "legendFormat": "{{job}}"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "💾 Jenkins Master Resource Usage",
+        "type": "graph",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 0,
+          "y": 18
+        },
+        "targets": [
+          {
+            "expr": "process_resident_memory_bytes{job=\"jenkins\"}",
+            "legendFormat": "Memory Usage"
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "🔍 Recent Build Status",
+        "type": "logs",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 12,
+          "y": 18
+        },
+        "targets": [
+          {
+            "expr": "{job=\"jenkins\"} |= \"BUILD\"",
+            "legendFormat": "Jenkins Logs"
+          }
+        ]
+      }
+    ]
+  }
+}

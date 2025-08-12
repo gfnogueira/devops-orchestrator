@@ -1,0 +1,218 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "🐍 Flask Application Monitoring",
+    "description": "Complete monitoring for Flask applications with performance metrics",
+    "tags": ["flask", "python", "application", "performance"],
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "🚀 Request Rate",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "rate(flask_http_request_total[5m])",
+            "legendFormat": "Requests/sec"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "⚡ Response Time",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 6,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "flask_http_request_duration_seconds{quantile=\"0.5\"}",
+            "legendFormat": "Median Response Time"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "✅ Success Rate",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 12,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "(rate(flask_http_request_total{status=~\"2..\"}[5m]) / rate(flask_http_request_total[5m])) * 100",
+            "legendFormat": "Success Rate %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 95},
+                {"color": "green", "value": 99}
+              ]
+            },
+            "unit": "percent"
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "🔢 Active Connections",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 18,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "flask_http_request_in_progress",
+            "legendFormat": "Active Requests"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "📈 HTTP Request Rate by Endpoint",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 4
+        },
+        "targets": [
+          {
+            "expr": "rate(flask_http_request_total[5m])",
+            "legendFormat": "{{method}} {{endpoint}}"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "⏱️ Response Time Distribution",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 4
+        },
+        "targets": [
+          {
+            "expr": "flask_http_request_duration_seconds{quantile=\"0.5\"}",
+            "legendFormat": "50th percentile"
+          },
+          {
+            "expr": "flask_http_request_duration_seconds{quantile=\"0.9\"}",
+            "legendFormat": "90th percentile"
+          },
+          {
+            "expr": "flask_http_request_duration_seconds{quantile=\"0.99\"}",
+            "legendFormat": "99th percentile"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "🔴 HTTP Error Rates",
+        "type": "graph",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 0,
+          "y": 12
+        },
+        "targets": [
+          {
+            "expr": "rate(flask_http_request_total{status=~\"4..\"}[5m])",
+            "legendFormat": "4xx Errors"
+          },
+          {
+            "expr": "rate(flask_http_request_total{status=~\"5..\"}[5m])",
+            "legendFormat": "5xx Errors"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "💾 Application Memory Usage",
+        "type": "graph",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 12,
+          "y": 12
+        },
+        "targets": [
+          {
+            "expr": "process_resident_memory_bytes{job=\"flask-app\"}",
+            "legendFormat": "Memory Usage"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "⚙️ CPU Usage",
+        "type": "graph",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 0,
+          "y": 18
+        },
+        "targets": [
+          {
+            "expr": "rate(process_cpu_seconds_total{job=\"flask-app\"}[5m]) * 100",
+            "legendFormat": "CPU Usage %"
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "🌐 Top Endpoints by Traffic",
+        "type": "table",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 12,
+          "y": 18
+        },
+        "targets": [
+          {
+            "expr": "topk(10, sum by (endpoint) (rate(flask_http_request_total[5m])))",
+            "legendFormat": "{{endpoint}}"
+          }
+        ]
+      }
+    ]
+  }
+}

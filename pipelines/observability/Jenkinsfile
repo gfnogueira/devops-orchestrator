@@ -1,0 +1,194 @@
+pipeline {
+    agent {
+        kubernetes {
+            label 'devops-agent'
+            defaultContainer 'jnlp'
+            serviceAccount 'jenkins'
+        }
+    }
+
+    environment {
+        TOFU_VERSION = '1.8.4'
+        KUBECONFIG_PATH = '/tmp/kubeconfig'
+    }
+
+    parameters {
+        choice(
+            name: 'ACTION',
+            choices: ['plan', 'apply', 'destroy'],
+            description: 'Action to perform with OpenTofu'
+        )
+        booleanParam(
+            name: 'AUTO_APPROVE',
+            defaultValue: false,
+            description: 'Auto-approve the action (use with caution!)'
+        )
+    }
+
+    options {
+        // Limit concurrent builds and set a global timeout
+        disableConcurrentBuilds()
+        timeout(time: 40, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "Checking out repository..."
+                checkout scm
+            }
+        }
+
+        stage('Setup') {
+            steps {
+                script {
+                    echo "Validating agent environment..."
+                    sh '''
+                        set -eux
+                        echo "PATH: $PATH"
+                        ls -la /usr/local/bin/ || true
+                        which tofu || true
+                        tofu version || true
+                        kubectl version --client || true
+                        kubectl cluster-info --context=infra-cluster || true
+                        cd opentofu/environments/infra-cluster/observability
+                        pwd
+                        ls -la
+                    '''
+                }
+            }
+        }
+        
+        stage('Initialize') {
+            steps {
+                dir('opentofu/environments/infra-cluster/observability') {
+                    script {
+                        echo "Initializing OpenTofu..."
+                        sh '''
+                            tofu init -upgrade
+                            tofu providers
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Validate') {
+            steps {
+                dir('opentofu/environments/infra-cluster/observability') {
+                    script {
+                        echo "Validating OpenTofu configuration..."
+                        sh 'tofu validate'
+                    }
+                }
+            }
+        }
+        
+        stage('Plan') {
+            when {
+                anyOf {
+                    expression { params.ACTION == 'plan' }
+                    expression { params.ACTION == 'apply' }
+                }
+            }
+            steps {
+                dir('opentofu/environments/infra-cluster/observability') {
+                    script {
+                        echo "Creating OpenTofu execution plan..."
+                        def planStatus = sh(
+                            script: 'tofu plan -out=tfplan -detailed-exitcode',
+                            returnStatus: true
+                        )
+                        if (planStatus == 0) {
+                            echo "No changes detected."
+                        } else if (planStatus == 2) {
+                            echo "Changes detected and plan created."
+                        } else {
+                            error "Plan failed with exit code: ${planStatus}"
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Apply') {
+            when {
+                expression { params.ACTION == 'apply' }
+            }
+            steps {
+                script {
+                    if (!params.AUTO_APPROVE) {
+                        input message: 'Apply the planned changes?', ok: 'Apply'
+                    }
+                }
+                dir('opentofu/environments/infra-cluster/observability') {
+                    script {
+                        echo "Applying OpenTofu changes..."
+                        sh 'tofu apply tfplan'
+                    }
+                }
+            }
+        }
+        
+        stage('Destroy') {
+            when {
+                expression { params.ACTION == 'destroy' }
+            }
+            steps {
+                script {
+                    input message: 'Are you sure you want to DESTROY the observability infrastructure?', ok: 'Destroy'
+                }
+                dir('opentofu/environments/infra-cluster/observability') {
+                    script {
+                        echo "Destroying observability infrastructure..."
+                        if (params.AUTO_APPROVE) {
+                            sh 'tofu destroy -auto-approve'
+                        } else {
+                            sh 'tofu destroy'
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Validate Deployment') {
+            when {
+                expression { params.ACTION == 'apply' }
+            }
+            steps {
+                script {
+                    echo "Validating observability deployment..."
+                    sh '''
+                        echo "Checking monitoring namespace..."
+                        kubectl get namespace monitoring --context=infra-cluster || echo "Namespace not found"
+
+                        echo "Checking Prometheus deployment..."
+                        kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus --context=infra-cluster || echo "Prometheus pods not found"
+
+                        echo "Checking Grafana deployment..."
+                        kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana --context=infra-cluster || echo "Grafana pods not found"
+
+                        echo "Checking services..."
+                        kubectl get svc -n monitoring --context=infra-cluster || echo "Services not found"
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo "Cleaning up..."
+            sh '''
+                cd opentofu/environments/infra-cluster/observability
+                rm -f tfplan || true
+            '''
+        }
+        success {
+            echo "Observability pipeline completed successfully!"
+        }
+        failure {
+            echo "Observability pipeline failed!"
+        }
+    }
+}

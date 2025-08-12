@@ -1,0 +1,60 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Infrastructure Dashboard",
+    "tags": ["infrastructure", "kubernetes", "jenkins"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Kubernetes Cluster Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"kubernetes-apiservers\"}",
+            "legendFormat": "API Server"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Jenkins Build Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "jenkins_builds_success_total",
+            "legendFormat": "Successful Builds"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "CPU Usage by Node",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+            "legendFormat": "{{instance}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+      },
+      {
+        "id": 4,
+        "title": "Memory Usage by Node",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+            "legendFormat": "{{instance}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+      }
+    ],
+    "time": {"from": "now-1h", "to": "now"},
+    "refresh": "30s"
+  }
+}

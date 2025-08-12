@@ -1,0 +1,217 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "🚀 DevOps Infrastructure",
+    "description": "Comprehensive monitoring for Kubernetes, Jenkins, and Applications",
+    "tags": ["infrastructure", "kubernetes", "jenkins", "devops"],
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "🔥 Cluster Status Overview",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "up{job=\"kubernetes-apiservers\"}",
+            "legendFormat": "API Server"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "green", "value": 1}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "🏗️ Jenkins Build Status",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 6,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "jenkins_builds_success_total",
+            "legendFormat": "Successful Builds"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "💾 Cluster Resources Usage",
+        "type": "gauge",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 12,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+            "legendFormat": "Memory %"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "⚡ Active Pods by Namespace",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 18,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "count by (namespace) (kube_pod_info{phase=\"Running\"})",
+            "legendFormat": "{{namespace}}"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "📈 CPU Usage by Node",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 4
+        },
+        "targets": [
+          {
+            "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+            "legendFormat": "{{instance}}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "CPU %",
+            "min": 0,
+            "max": 100
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "💾 Memory Usage by Node",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 4
+        },
+        "targets": [
+          {
+            "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+            "legendFormat": "{{instance}}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Memory %",
+            "min": 0,
+            "max": 100
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "🚀 Jenkins Pipeline Performance",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 12
+        },
+        "targets": [
+          {
+            "expr": "jenkins_builds_duration_milliseconds_summary",
+            "legendFormat": "Build Duration ({{job}})"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "☸️ Kubernetes Resources Health",
+        "type": "table",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 12
+        },
+        "targets": [
+          {
+            "expr": "kube_deployment_status_replicas_available",
+            "legendFormat": "{{deployment}}"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "🌐 Network Traffic",
+        "type": "graph",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 0,
+          "y": 20
+        },
+        "targets": [
+          {
+            "expr": "rate(node_network_receive_bytes_total[5m])",
+            "legendFormat": "RX {{device}}"
+          },
+          {
+            "expr": "rate(node_network_transmit_bytes_total[5m])",
+            "legendFormat": "TX {{device}}"
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "💿 Disk Usage",
+        "type": "graph",
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 12,
+          "y": 20
+        },
+        "targets": [
+          {
+            "expr": "100 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100",
+            "legendFormat": "Disk Usage % {{instance}}"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,119 @@
+# 🚨 ALERTAS PROFISSIONAIS PARA DEVOPS
+groups:
+  - name: "🔥 Critical Infrastructure Alerts"
+    rules:
+      - alert: "🆘 Kubernetes API Server Down"
+        expr: up{job="kubernetes-apiservers"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "🔴 CRITICAL: Kubernetes API Server is DOWN!"
+          description: "The Kubernetes API server has been down for more than 1 minute. IMMEDIATE ACTION REQUIRED!"
+          
+      - alert: "💥 Node Down"
+        expr: up{job="kubernetes-nodes"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "🔴 CRITICAL: Kubernetes Node Offline"
+          description: "Node {{ $labels.instance }} has been down for more than 5 minutes."
+
+      - alert: "🔥 High Memory Usage"
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "⚠️ WARNING: High Memory Usage"
+          description: "Node {{ $labels.instance }} memory usage is {{ $value }}% (threshold: 85%)"
+
+  - name: "🚀 Jenkins CI/CD Alerts" 
+    rules:
+      - alert: "🔧 Jenkins Master Down"
+        expr: up{job="jenkins"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: devops
+        annotations:
+          summary: "🔴 CRITICAL: Jenkins Master is DOWN!"
+          description: "Jenkins master has been unreachable for more than 2 minutes. CI/CD pipelines are blocked!"
+          
+      - alert: "📉 Build Success Rate Low"
+        expr: (jenkins_builds_success_total / (jenkins_builds_success_total + jenkins_builds_failed_total)) * 100 < 80
+        for: 10m
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "⚠️ WARNING: Low Build Success Rate"
+          description: "Jenkins build success rate is {{ $value }}% (threshold: 80%)"
+          
+      - alert: "⏰ Long Build Queue"
+        expr: jenkins_queue_size_total > 5
+        for: 5m
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "⚠️ WARNING: Long Jenkins Queue"
+          description: "Jenkins queue has {{ $value }} jobs waiting (threshold: 5)"
+
+  - name: "🐍 Application Performance Alerts"
+    rules:
+      - alert: "🐍 Flask App Down"
+        expr: up{job="flask-app"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: application
+        annotations:
+          summary: "🔴 CRITICAL: Flask Application Down"
+          description: "Flask application {{ $labels.instance }} has been down for more than 2 minutes!"
+          
+      - alert: "⚡ High Response Time"
+        expr: flask_http_request_duration_seconds{quantile="0.9"} > 2
+        for: 5m
+        labels:
+          severity: warning
+          team: application
+        annotations:
+          summary: "⚠️ WARNING: High Response Time"
+          description: "Flask app 90th percentile response time is {{ $value }}s (threshold: 2s)"
+          
+      - alert: "🔴 High Error Rate"
+        expr: (rate(flask_http_request_total{status=~"5.."}[5m]) / rate(flask_http_request_total[5m])) * 100 > 5
+        for: 5m
+        labels:
+          severity: critical
+          team: application
+        annotations:
+          summary: "🔴 CRITICAL: High Error Rate"
+          description: "Flask app error rate is {{ $value }}% (threshold: 5%)"
+
+  - name: "☸️ Kubernetes Resource Alerts"
+    rules:
+      - alert: "📦 Pod Crash Looping"
+        expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "⚠️ WARNING: Pod Crash Looping"
+          description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is crash looping"
+          
+      - alert: "💾 Persistent Volume Full"
+        expr: (kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes) * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "🔴 CRITICAL: Persistent Volume Almost Full"
+          description: "PV {{ $labels.persistentvolumeclaim }} is {{ $value }}% full (threshold: 90%)"

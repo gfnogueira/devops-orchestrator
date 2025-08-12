@@ -1,0 +1,270 @@
+pipeline {
+    agent {
+        kubernetes {
+            label 'tools-validation'
+            defaultContainer 'devops-agent'
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: devops-agent
+    image: gfnogueira/jenkins-devops-agent:latest
+    command:
+    - cat
+    tty: true
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+"""
+        }
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+    }
+    
+    environment {
+        TOOLS_REPORT = 'tools-validation-report.txt'
+    }
+    
+    stages {
+        stage('Environment Info') {
+            steps {
+                script {
+                    echo "=== ENVIRONMENT INFORMATION ==="
+                    sh '''
+                        echo "Pod Name: $HOSTNAME"
+                        echo "User: $(whoami)"
+                        echo "Working Directory: $(pwd)"
+                        echo "Date: $(date)"
+                        echo "OS Info: $(cat /etc/os-release | head -5)"
+                    '''
+                }
+            }
+        }
+        
+        stage('Go Validation') {
+            steps {
+                script {
+                    echo "=== VALIDATING GOLANG ==="
+                    sh '''
+                        echo "Go Version:" | tee -a $TOOLS_REPORT
+                        go version 2>&1 | tee -a $TOOLS_REPORT
+                        
+                        echo -e "\nGo Environment:" | tee -a $TOOLS_REPORT
+                        go env GOROOT GOPATH 2>&1 | tee -a $TOOLS_REPORT
+                        
+                        echo -e "\nTesting Go compilation:" | tee -a $TOOLS_REPORT
+                        cat > test.go << 'EOF'
+package main
+import "fmt"
+func main() { fmt.Println("Go works!") }
+EOF
+                        go run test.go 2>&1 | tee -a $TOOLS_REPORT
+                        rm test.go
+                    '''
+                }
+            }
+        }
+        
+        stage('OpenTofu/Terraform Validation') {
+            steps {
+                script {
+                    echo "=== VALIDATING OPENTOFU ==="
+                    sh '''
+                        echo "OpenTofu Version:" | tee -a $TOOLS_REPORT
+                        opentofu version 2>&1 | tee -a $TOOLS_REPORT
+                        
+                        echo -e "\nTesting OpenTofu init:" | tee -a $TOOLS_REPORT
+                        mkdir -p test-tf
+                        cd test-tf
+                        cat > main.tf << 'EOF'
+terraform {
+  required_version = ">= 1.0"
+}
+
+output "test" {
+  value = "OpenTofu works!"
+}
+EOF
+                        opentofu init 2>&1 | tee -a ../$TOOLS_REPORT
+                        opentofu plan 2>&1 | tee -a ../$TOOLS_REPORT
+                        cd ..
+                        rm -rf test-tf
+                    '''
+                }
+            }
+        }
+        
+        stage('TFLint Validation') {
+            steps {
+                script {
+                    echo "=== VALIDATING TFLINT ==="
+                    sh '''
+                        echo "TFLint Version:" | tee -a $TOOLS_REPORT
+                        tflint --version 2>&1 | tee -a $TOOLS_REPORT
+                        
+                        echo -e "\nTesting TFLint:" | tee -a $TOOLS_REPORT
+                        mkdir -p test-tflint
+                        cd test-tflint
+                        cat > main.tf << 'EOF'
+resource "aws_instance" "example" {
+  ami           = "ami-12345678"
+  instance_type = "t2.micro"
+}
+EOF
+                        tflint --init 2>&1 | tee -a ../$TOOLS_REPORT || true
+                        tflint 2>&1 | tee -a ../$TOOLS_REPORT || true
+                        cd ..
+                        rm -rf test-tflint
+                    '''
+                }
+            }
+        }
+        
+        stage('Terraform Docs Validation') {
+            steps {
+                script {
+                    echo "=== VALIDATING TERRAFORM-DOCS ==="
+                    sh '''
+                        echo "Terraform-docs Version:" | tee -a $TOOLS_REPORT
+                        terraform-docs --version 2>&1 | tee -a $TOOLS_REPORT
+                        
+                        echo -e "\nTesting terraform-docs:" | tee -a $TOOLS_REPORT
+                        mkdir -p test-docs
+                        cd test-docs
+                        cat > main.tf << 'EOF'
+variable "example" {
+  description = "An example variable"
+  type        = string
+  default     = "test"
+}
+
+output "example_output" {
+  description = "An example output"
+  value       = var.example
+}
+EOF
+                        terraform-docs markdown . 2>&1 | tee -a ../$TOOLS_REPORT
+                        cd ..
+                        rm -rf test-docs
+                    '''
+                }
+            }
+        }
+        
+        stage('Conftest Validation') {
+            steps {
+                script {
+                    echo "=== VALIDATING CONFTEST ==="
+                    sh '''
+                        echo "Conftest Version:" | tee -a $TOOLS_REPORT
+                        conftest --version 2>&1 | tee -a $TOOLS_REPORT
+                        
+                        echo -e "\nTesting Conftest:" | tee -a $TOOLS_REPORT
+                        mkdir -p test-conftest
+                        cd test-conftest
+                        
+                        # Create a simple policy
+                        cat > policy.rego << 'EOF'
+package main
+
+deny[msg] {
+  input.kind == "Deployment"
+  not input.spec.template.spec.securityContext.runAsNonRoot
+  msg := "Containers must run as non-root user"
+}
+EOF
+                        
+                        # Create a test file
+                        cat > deployment.yaml << 'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test
+spec:
+  template:
+    spec:
+      containers:
+      - name: test
+        image: nginx
+EOF
+                        
+                        conftest test deployment.yaml 2>&1 | tee -a ../$TOOLS_REPORT || true
+                        cd ..
+                        rm -rf test-conftest
+                    '''
+                }
+            }
+        }
+        
+        stage('Git Validation') {
+            steps {
+                script {
+                    echo "=== VALIDATING GIT ==="
+                    sh '''
+                        echo "Git Version:" | tee -a $TOOLS_REPORT
+                        git --version 2>&1 | tee -a $TOOLS_REPORT
+                        
+                        echo -e "\nGit Configuration:" | tee -a $TOOLS_REPORT
+                        git config --list --global 2>&1 | head -10 | tee -a $TOOLS_REPORT || true
+                    '''
+                }
+            }
+        }
+        
+        stage('System Tools Validation') {
+            steps {
+                script {
+                    echo "=== VALIDATING SYSTEM TOOLS ==="
+                    sh '''
+                        echo "System Tools:" | tee -a $TOOLS_REPORT
+                        echo "- curl: $(curl --version | head -1)" | tee -a $TOOLS_REPORT
+                        echo "- wget: $(wget --version | head -1)" | tee -a $TOOLS_REPORT
+                        echo "- unzip: $(unzip -v | head -1)" | tee -a $TOOLS_REPORT
+                        echo "- make: $(make --version | head -1)" | tee -a $TOOLS_REPORT
+                        echo "- gcc: $(gcc --version | head -1)" | tee -a $TOOLS_REPORT
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                echo "=== FINAL SUMMARY ==="
+                sh '''
+                    echo -e "\n=== VALIDATION SUMMARY ===" | tee -a $TOOLS_REPORT
+                    echo "Timestamp: $(date)" | tee -a $TOOLS_REPORT
+                    echo "Build: ${BUILD_NUMBER}" | tee -a $TOOLS_REPORT
+                    echo "Node: ${NODE_NAME}" | tee -a $TOOLS_REPORT
+                '''
+            }
+            
+            // Archive the report
+            archiveArtifacts artifacts: 'tools-validation-report.txt', fingerprint: true
+            
+            // Show report content in the console
+            sh 'echo "=== REPORT CONTENT ==="; cat $TOOLS_REPORT'
+        }
+        
+        success {
+            echo "✅ All tools have been successfully validated!"
+        }
+        
+        failure {
+            echo "❌ Tool validation failed. Check the logs."
+        }
+        
+        cleanup {
+            echo "Cleanup completed."
+        }
+    }
+}
