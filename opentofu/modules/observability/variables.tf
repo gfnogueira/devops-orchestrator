@@ -1,4 +1,4 @@
-variable "monitoring_namespace" {
+variable "observability_namespace" {
   description = "Namespace to install observability tools"
   type        = string
   default     = "observability"

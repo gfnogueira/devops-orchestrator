@@ -10,7 +10,7 @@ output "grafana_service" {
   sensitive   = true
 }
 
-output "monitoring_namespace" {
-  description = "Namespace where monitoring components are deployed"
-  value       = module.observability.monitoring_namespace
+output "observability_namespace" {
+  description = "Namespace where observability components are deployed"
+  value       = module.observability.observability_namespace
 }

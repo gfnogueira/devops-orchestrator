@@ -1,6 +1,6 @@
-output "monitoring_namespace" {
+output "observability_namespace" {
   description = "Namespace used for observability tools"
-  value       = var.monitoring_namespace
+  value       = var.observability_namespace
 }
 
 output "prometheus_release" {

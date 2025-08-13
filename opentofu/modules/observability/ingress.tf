@@ -7,7 +7,7 @@ resource "kubernetes_ingress_v1" "grafana_ingress" {
 
   metadata {
     name      = "grafana-ingress"
-    namespace = var.monitoring_namespace
+    namespace = var.observability_namespace
     annotations = {
       "nginx.ingress.kubernetes.io/backend-protocol" = "HTTP"
     }
@@ -45,7 +45,7 @@ resource "kubernetes_ingress_v1" "prometheus_ingress" {
 
   metadata {
     name      = "prometheus-ingress"
-    namespace = var.monitoring_namespace
+    namespace = var.observability_namespace
     annotations = {
       "nginx.ingress.kubernetes.io/backend-protocol" = "HTTP"
     }

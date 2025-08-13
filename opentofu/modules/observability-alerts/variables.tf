@@ -8,8 +8,8 @@ variable "environment" {
   type        = string
 }
 
-variable "monitoring_namespace" {
-  description = "Kubernetes namespace for monitoring resources"
+variable "observability_namespace" {
+  description = "Kubernetes namespace for observability resources"
   type        = string
-  default     = "monitoring"
+  default     = "observability"
 }

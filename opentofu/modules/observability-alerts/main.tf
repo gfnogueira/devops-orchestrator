@@ -11,7 +11,7 @@ resource "kubernetes_manifest" "devops_alerts" {
     kind       = "PrometheusRule"
     metadata = {
       name      = "devops-alerts"
-      namespace = var.monitoring_namespace
+      namespace = var.observability_namespace
       labels = {
         "prometheus" = "kube-prometheus"
         "role"       = "alert-rules"

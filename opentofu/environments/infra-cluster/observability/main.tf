@@ -12,7 +12,7 @@ module "observability" {
   
   cluster_name         = local.cluster_name
   environment          = local.environment
-  monitoring_namespace = "monitoring"
+  observability_namespace = "observability"
   
   prometheus_enabled   = true
   grafana_enabled      = true

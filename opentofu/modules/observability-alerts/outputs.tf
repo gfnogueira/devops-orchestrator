@@ -1,6 +1,6 @@
-output "monitoring_namespace" {
+output "observability_namespace" {
   description = "The namespace where alerts were created"
-  value       = var.monitoring_namespace
+  value       = var.observability_namespace
 }
 
 output "prometheus_rule_name" {

@@ -11,7 +11,7 @@ resource "helm_release" "prometheus_stack" {
   repository = "https://prometheus-community.github.io/helm-charts"
   chart      = "kube-prometheus-stack"
   version    = "55.5.0"
-  namespace  = var.monitoring_namespace
+  namespace  = var.observability_namespace
 
   create_namespace = false
   wait             = true
@@ -41,7 +41,7 @@ resource "helm_release" "prometheus_stack" {
 resource "kubernetes_config_map" "flask_dashboard" {
   metadata {
     name      = "flask-app-dashboard"
-    namespace = var.monitoring_namespace
+    namespace = var.observability_namespace
     labels = {
       "grafana_dashboard" = "1"
     }
@@ -60,7 +60,7 @@ resource "kubernetes_config_map" "flask_dashboard" {
 resource "kubernetes_config_map" "infrastructure_dashboard" {
   metadata {
     name      = "infrastructure-dashboard"
-    namespace = var.monitoring_namespace
+    namespace = var.observability_namespace
     labels = {
       "grafana_dashboard" = "1"
     }
@@ -79,7 +79,7 @@ resource "kubernetes_config_map" "infrastructure_dashboard" {
 resource "kubernetes_config_map" "infrastructure_devops_dashboard" {
   metadata {
     name      = "infrastructure-devops-dashboard"
-    namespace = var.monitoring_namespace
+    namespace = var.observability_namespace
     labels = {
       "grafana_dashboard" = "1"
     }
@@ -96,7 +96,7 @@ resource "kubernetes_config_map" "infrastructure_devops_dashboard" {
 resource "kubernetes_config_map" "jenkins_dashboard" {
   metadata {
     name      = "jenkins-dashboard"
-    namespace = var.monitoring_namespace
+    namespace = var.observability_namespace
     labels = {
       "grafana_dashboard" = "1"
     }
@@ -113,7 +113,7 @@ resource "kubernetes_config_map" "jenkins_dashboard" {
 resource "kubernetes_config_map" "flask_application_dashboard" {
   metadata {
     name      = "flask-application-dashboard"
-    namespace = var.monitoring_namespace
+    namespace = var.observability_namespace
     labels = {
       "grafana_dashboard" = "1"
     }

@@ -12,5 +12,5 @@ module "observability_alerts" {
   
   cluster_name         = local.cluster_name
   environment          = local.environment
-  monitoring_namespace = "monitoring"
+  observability_namespace = "observability"
 }

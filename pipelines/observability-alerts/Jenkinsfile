@@ -143,8 +143,8 @@ pipeline {
                     echo 'Validating PrometheusRule deployment...'
                     sh '''
                         set -eux
-                        kubectl get prometheusrule devops-alerts -n monitoring
-                        kubectl describe prometheusrule devops-alerts -n monitoring
+                        kubectl get prometheusrule devops-alerts -n observability
+                        kubectl describe prometheusrule devops-alerts -n observability
                     '''
                 }
             }
