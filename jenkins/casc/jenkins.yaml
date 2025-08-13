@@ -1,0 +1,191 @@
+jenkins:
+  systemMessage: "Jenkins DevOps Automation Server - Simplified"
+  numExecutors: 2
+  mode: NORMAL
+  
+  # BASIC SECURITY CONFIGURATION
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "admin"
+          description: "Administrator user"
+  
+  authorizationStrategy:
+    globalMatrix:
+      permissions:
+        - "Overall/Administer:admin"
+        - "Overall/Read:authenticated"
+  
+  clouds:
+    - kubernetes:
+        name: "kubernetes"
+        serverUrl: ""
+        namespace: "jenkins"
+        jenkinsUrl: "http://jenkins:8080"
+        jenkinsTunnel: "jenkins-agent:50000"
+        containerCap: 10
+        maxRequestsPerHost: 32
+        retentionTimeout: 5
+        connectTimeout: 5
+        readTimeout: 15
+        templates:
+          - name: "devops-agent"
+            namespace: "jenkins"
+            label: "devops-agent"
+            serviceAccount: "jenkins"
+            containers:
+              - name: "jnlp"
+                image: "gfnogueira/jenkins-devops-agent:latest"
+                alwaysPullImage: true
+                ttyEnabled: true
+
+# Credentials configuration - Using environment variables for security
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "github-credentials"
+              username: "${GITHUB_USERNAME}"
+              password: "${GITHUB_TOKEN}"
+              description: "GitHub credentials for repository access"
+
+# Script security configuration
+security:
+  scriptApproval:
+    approvedSignatures:
+      - "method groovy.lang.GroovyObject invokeMethod java.lang.String java.lang.Object"
+      - "new java.io.File java.lang.String"
+      - "method java.io.File exists"
+      - "method java.io.File eachDir groovy.lang.Closure"
+      - "method java.io.File getName"
+      - "method java.io.File listFiles"
+      - "method java.io.File isDirectory"
+      - "staticMethod java.lang.System getProperty java.lang.String"
+
+tool:
+  git:
+    installations:
+      - name: "Default Git"
+        home: "/usr/bin/git"
+
+# Automated jobs
+jobs:
+  - script: |
+      // Pipeline Auto-Discovery Job
+      freeStyleJob('pipeline-auto-discovery') {
+          displayName('Pipeline Auto-Discovery Scanner')
+          description('Automatically discovers and creates pipelines')
+          
+          // GitHub repository configuration with credentials
+          scm {
+              git {
+                  remote {
+                      url('https://github.com/gfnogueira/devops-orchestrator.git')
+                      credentials('github-credentials')
+                  }
+                  branch('main')
+              }
+          }
+          
+          // Automatic triggers
+          triggers {
+              scm('H/15 * * * *')  // Polling a cada 15 minutos
+          }
+          
+          // Execution
+          steps {
+              shell('''
+                  echo "Starting automatic pipeline discovery..."
+                  echo "Listing contents of the pipelines directory:"
+                  ls -la pipelines/ || echo "Pipelines directory not found"
+                  
+                  echo "Pipelines with Jenkinsfile found:"
+                  find pipelines/ -name "Jenkinsfile" -type f | while read jenkinsfile; do
+                      pipeline_dir=$(dirname "$jenkinsfile")
+                      pipeline_name=$(basename "$pipeline_dir")
+                      echo "Pipeline found: $pipeline_name"
+                  done
+              ''')
+              
+              dsl {
+                  text('''
+                      // pipeline auto-discovery
+                      def pipelineBaseDir = new File("/var/jenkins_home/workspace/pipeline-auto-discovery/pipelines")
+                      def discoveredPipelines = []
+                      
+                      println "Starting automatic pipeline discovery..."
+                      println "Base directory: ${pipelineBaseDir.absolutePath}"
+                      
+                      if (pipelineBaseDir.exists() && pipelineBaseDir.isDirectory()) {
+                          pipelineBaseDir.eachDir { dir ->
+                              def jenkinsfile = new File(dir, "Jenkinsfile")
+                          if (jenkinsfile.exists()) {
+                              discoveredPipelines << dir.name
+                              println "Pipeline discovered: ${dir.name}"
+                          }
+                          }
+                      }
+                      
+                      println "Total pipelines discovered: ${discoveredPipelines.size()}"
+                      println "Pipelines found: ${discoveredPipelines.join(', ')}"
+                      
+                      discoveredPipelines.each { pipelineName ->
+                          println "=== Creating pipeline: " + pipelineName + " ==="
+                          println "Name length: " + pipelineName.length()
+                          println "Raw name: [" + pipelineName + "]"
+                          
+                          // Use the folder name directly - no transformation
+                          def scriptPathValue = "pipelines/" + pipelineName + "/Jenkinsfile"
+                          println "Script path will be: " + scriptPathValue
+                          
+                          // Standard pipeline - no name transformation
+                          pipelineJob(pipelineName) {
+                              displayName(pipelineName)
+                              description("Pipeline for " + pipelineName + " - Main branch only")
+                              
+                              // Pipeline definition
+                              definition {
+                                  cpsScm {
+                                      scm {
+                                          git {
+                                              remote {
+                                                  url('https://github.com/gfnogueira/devops-orchestrator.git')
+                                                  credentials('github-credentials')
+                                              }
+                                              branch('main')
+                                          }
+                                      }
+                                      scriptPath(scriptPathValue)
+                                  }
+                              }
+                              
+                              // Build configuration
+                              logRotator {
+                                  numToKeep(10)
+                                  daysToKeep(7)
+                              }
+                              
+                              // Triggers
+                              triggers {
+                                  scm('H/15 * * * *')  // Polling a cada 15 minutos
+                              }
+                              
+                              // Properties
+                              properties {
+                                  disableConcurrentBuilds()
+                              }
+                          }
+                      }
+                      
+                      println "Pipeline discovery complete! ${discoveredPipelines.size()} pipelines created."
+                      println "Pipelines created: ${discoveredPipelines.join(', ')}"
+                  ''')
+                  removeAction('DELETE')
+                  ignoreExisting(false)
+              }
+          }
+      }

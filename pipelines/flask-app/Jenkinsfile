@@ -1,0 +1,240 @@
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: docker
+    image: docker:20.10.24-dind
+    securityContext:
+      privileged: true
+    env:
+    - name: DOCKER_TLS_CERTDIR
+      value: ""
+  - name: helm
+    image: alpine/helm:3.12.0
+    command:
+    - cat
+    tty: true
+  - name: kubectl
+    image: bitnami/kubectl:1.28
+    command:
+    - cat
+    tty: true
+  - name: python
+    image: python:3.11-slim
+    command:
+    - cat
+    tty: true
+            '''
+        }
+    }
+
+    triggers {
+        pollSCM('H/2 * * * *')  // Poll Git a cada 2 minutos
+    }
+
+    environment {
+        DOCKER_REGISTRY = 'docker.io'
+        IMAGE_NAME = 'gfnogueira/flask-devops-app'
+        APP_NAMESPACE = 'developer'
+        GIT_REPO = 'https://github.com/gfnogueira/devops-orchestrator-flask-app.git'
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                echo "✅ Repository cloned successfully"
+            }
+        }
+
+        stage('Show Branch Name') {
+            steps {
+                script {
+                    echo "Branch detectada pelo Jenkins: ${env.BRANCH_NAME}"
+                }
+            }
+        }
+
+        stage('Install Dependencies & Quality Tools') {
+            steps {
+                container('python') {
+                    script {
+                        echo "Installing dependencies and quality tools..."
+                        sh '''
+                            apt-get update && apt-get install -y curl
+                            pip install --upgrade pip setuptools
+                            pip install --force-reinstall certifi
+                            pip install -r requirements.txt
+                            pip install safety bandit
+                        '''
+                        echo "Dependencies and tools installed"
+                    }
+                }
+            }
+        }
+        stage('Run Tests') {
+            steps {
+                container('python') {
+                    script {
+                        echo "Running tests with coverage..."
+                        sh '''
+                            python -m pytest tests/ -v --cov=app --cov-report=xml --cov-report=html
+                        '''
+                        echo "Tests completed"
+                    }
+                }
+            }
+            post {
+                always {
+                    script {
+                        echo "Archiving test results..."
+                        archiveArtifacts artifacts: 'htmlcov/**', allowEmptyArchive: true
+                    }
+                }
+            }
+        }
+        stage('Security Scan') {
+            steps {
+                container('python') {
+                    script {
+                        echo "Running security scans..."
+                        sh '''
+                            echo "Checking for vulnerable dependencies..."
+                            safety check
+                            echo "Running static security analysis..."
+                            bandit -r app/ -f json -o bandit-report.json || true
+                        '''
+                        echo "Security scan completed"
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'bandit-report.json', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Build & Push Docker Image') {
+            when {
+                expression {
+                    env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop'
+                }
+            }
+            steps {
+                container('docker') {
+                    script {
+                        def imageTag = env.BUILD_NUMBER
+                        def imageName = "${IMAGE_NAME}:${imageTag}"
+                        def latestImage = "${IMAGE_NAME}:latest"
+
+                        echo "Building Docker image: ${imageName}"
+                        sh "docker build -t ${imageName} -t ${latestImage} ."
+                        
+                        echo "Pushing to registry..."
+                        withCredentials([usernamePassword(credentialsId: 'docker-registry', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                            sh '''
+                                echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                                docker push ${imageName}
+                                docker push ${latestImage}
+                            '''
+                        }
+                        
+                        env.IMAGE_TAG = imageTag
+                        echo "Image pushed successfully: ${imageName}"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Developer') {
+            when {
+                expression {
+                    env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop'
+                }
+            }
+            steps {
+                container('helm') {
+                    script {
+                        echo "Deploying to ${APP_NAMESPACE} namespace..."
+                        sh '''
+                            # Criar namespace se não existir
+                            kubectl create namespace ${APP_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                            
+                            helm upgrade --install flask-app ./charts \
+                                --namespace ${APP_NAMESPACE} \
+                                --set image.tag=${IMAGE_TAG} \
+                                --set image.repository=${IMAGE_NAME} \
+                                --wait \
+                                --timeout=5m
+                        '''
+                        echo "✅ Deployment completed"
+                    }
+                }
+            }
+        }
+
+        stage('✅ Health Check') {
+            when {
+                expression {
+                    env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop'
+                }
+            }
+            steps {
+                container('kubectl') {
+                    script {
+                        echo "Running health checks..."
+                        sh '''
+                            echo "Aguardando deployment ficar pronto..."
+                            kubectl wait --for=condition=available deployment/flask-app \
+                                --namespace=${APP_NAMESPACE} \
+                                --timeout=300s
+                            
+                            echo "Verificando health dos pods..."
+                            kubectl get pods -n ${APP_NAMESPACE} -l app.kubernetes.io/name=flask-app
+                            
+                            echo "Verificando serviços..."
+                            kubectl get svc -n ${APP_NAMESPACE}
+                            
+                            echo "Verificando ingress..."
+                            kubectl get ingress -n ${APP_NAMESPACE} || echo "Nenhum ingress encontrado"
+                        '''
+                        echo "Health check completed successfully!"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                // Remove Python cache and test artifact directories before workspace cleanup
+                container('python') {
+                    sh '''
+                        find . -type d -name "__pycache__" -exec rm -rf {} +
+                        rm -rf .pytest_cache
+                        rm -rf htmlcov
+                    '''
+                }
+                // Limpa workspace
+                deleteDir()
+            }
+        }
+        success {
+            echo 'Pipeline executed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+    }
+}

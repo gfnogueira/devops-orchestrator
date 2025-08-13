@@ -1,0 +1,31 @@
+# Security: Do not commit sensitive environment files
+.env
+.env.local
+.env.production
+.env.staging
+
+# Terraform sensitive files
+*.tfvars
+!*.tfvars.example
+
+# Kubernetes secrets (if generated locally)
+**/secrets/*.yaml
+!**/secrets/*.example.yaml
+
+# GitHub tokens and credentials
+github-token.txt
+credentials.txt
+
+# Temporary files
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# IDE files
+.vscode/settings.json
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
