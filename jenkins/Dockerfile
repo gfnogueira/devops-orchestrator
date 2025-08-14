@@ -10,9 +10,14 @@ ENV GO_VERSION=1.21.0 \
     TOFU_VERSION=1.10.3 \
     PATH="/usr/local/go/bin:${PATH}"
 
-# Basic packages
+# Basic packages + Docker
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl unzip git gnupg wget lsb-release make build-essential bash \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=arm64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
 # Go (arm64)
@@ -38,7 +43,7 @@ RUN wget -q https://github.com/terraform-docs/terraform-docs/releases/download/v
  && rm terraform-docs-v${TERRAFORM_DOCS_VERSION}-linux-arm64.tar.gz \
  && terraform-docs --version
 
-# OpenTofu + kubectl (both arm64)
+# OpenTofu + kubectl + helm (all arm64)
 RUN wget -q https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_arm64.tar.gz \
  && tar -xzf tofu_${TOFU_VERSION}_linux_arm64.tar.gz \
  && mv tofu /usr/local/bin/tofu \
@@ -46,7 +51,12 @@ RUN wget -q https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSI
  && rm tofu_${TOFU_VERSION}_linux_arm64.tar.gz \
  && curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/arm64/kubectl" -o /usr/local/bin/kubectl \
  && chmod +x /usr/local/bin/kubectl \
+ && curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \
+ && chmod 700 get_helm.sh \
+ && ./get_helm.sh \
+ && rm get_helm.sh \
  && tofu version \
- && kubectl version --client=true
+ && kubectl version --client=true \
+ && helm version
 
 USER jenkins
