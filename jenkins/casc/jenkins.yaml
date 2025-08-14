@@ -37,7 +37,7 @@ jenkins:
             serviceAccount: "jenkins"
             containers:
               - name: "jnlp"
-                image: "gfnogueira/jenkins-devops-agent:latest"
+                image: "giancluciano/jenkins-agent:latest"
                 alwaysPullImage: true
                 ttyEnabled: true
 

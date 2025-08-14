@@ -56,7 +56,7 @@ resource "helm_release" "jenkins" {
         # Official Jenkins image with plugins
         image = {
           repository = "jenkins/jenkins"
-          tag        = "lts-jdk11"
+          tag        = "lts"
         }
         
         # Security Context
@@ -99,15 +99,16 @@ resource "helm_release" "jenkins" {
           name   = "jenkins"
         }
 
-        installPlugins = [
-          "configuration-as-code",
-          "pipeline-stage-view",
-          "kubernetes", 
-          "workflow-aggregator",
-          "matrix-auth",
-          "job-dsl",
-          "git"
-        ]
+#        installPlugins = [
+#          "configuration-as-code",
+#          "pipeline-stage-view",
+#          "kubernetes", 
+#          "workflow-aggregator",
+#          "matrix-auth",
+#          "job-dsl",
+#          "git"
+#        ]
+
         initScripts = []
         
         JCasC = {
@@ -117,6 +118,21 @@ resource "helm_release" "jenkins" {
             jenkins-config = file("${path.module}/../../../jenkins/casc/jenkins.yaml")
           }
         } 
+
+        initContainerEnv = [
+          { 
+            name = "_JAVA_OPTIONS",
+            value = "-Djsse.enableSNIExtension=true" 
+          },
+          { name = "JENKINS_UC",            value = "https://updates.jenkins.io/update-center.actual.json" },
+          { name = "JENKINS_PLUGIN_INFO",   value = "https://updates.jenkins.io/current/plugin-versions.json" },
+          { name = "JENKINS_UC_DOWNLOAD_URL", value = "https://mirror.azure.jenkins.io" },
+          { name = "NO_PROXY",              value = "updates.jenkins.io,.jenkins.io,.fastly.net" }
+          
+        ]
+
+        javasOpts = "-Djsse.enableSNIExtension=true"
+
         containerEnv = [
           {
             name = "GITHUB_USERNAME"
@@ -135,6 +151,10 @@ resource "helm_release" "jenkins" {
                 key  = "token"
               }
             }
+          },
+          {
+            name = "NO_PROXY"
+            value = "updates.jenkins.io,.jenkins.io,.fastly.net"
           }
         ]
 
