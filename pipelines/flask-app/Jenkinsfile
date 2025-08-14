@@ -51,8 +51,13 @@ spec:
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
-                echo "✅ Repository cloned successfully"
+                script {
+                    echo "Flask app: ${GIT_REPO}"
+                    git branch: 'main', url: "${GIT_REPO}"
+                    echo "Repository cloned successfully"
+                    env.BRANCH_NAME = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                    echo "BRANCH_NAME detectada: ${env.BRANCH_NAME}"
+                }
             }
         }
 
@@ -70,6 +75,8 @@ spec:
                     script {
                         echo "Installing dependencies and quality tools..."
                         sh '''
+                            pwd
+                            ls -la
                             apt-get update && apt-get install -y curl
                             pip install --upgrade pip setuptools
                             pip install --force-reinstall certifi
@@ -137,20 +144,10 @@ spec:
                         def imageName = "${IMAGE_NAME}:${imageTag}"
                         def latestImage = "${IMAGE_NAME}:latest"
 
-                        echo "Building Docker image: ${imageName}"
+                        echo "Building Docker image locally: ${imageName}"
                         sh "docker build -t ${imageName} -t ${latestImage} ."
-                        
-                        echo "Pushing to registry..."
-                        withCredentials([usernamePassword(credentialsId: 'docker-registry', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                            sh '''
-                                echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                                docker push ${imageName}
-                                docker push ${latestImage}
-                            '''
-                        }
-                        
+                        echo "Docker image created locally on Jenkins agent."
                         env.IMAGE_TAG = imageTag
-                        echo "Image pushed successfully: ${imageName}"
                     }
                 }
             }
@@ -163,17 +160,30 @@ spec:
                 }
             }
             steps {
-                container('helm') {
-                    script {
+                script {
+                    // Verificar conectividade com o cluster antes do deploy
+                    container('kubectl') {
+                        echo "Checking cluster connectivity..."
+                        sh '''
+                            echo "Checking kubectl version..."
+                            kubectl version --client
+                            echo "Checking cluster info..."
+                            kubectl cluster-info --context=infra-cluster || echo "Could not connect to infra-cluster"
+                            echo "Checking if namespace ${APP_NAMESPACE} exists..."
+                            kubectl get namespace ${APP_NAMESPACE} --context=infra-cluster || echo "Namespace ${APP_NAMESPACE} not found"
+                        '''
+                    }
+                    
+                    // Deploy usando helm
+                    container('helm') {
                         echo "Deploying to ${APP_NAMESPACE} namespace..."
                         sh '''
-                            # Criar namespace se não existir
-                            kubectl create namespace ${APP_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                            
+                            echo "Using image: ${IMAGE_NAME}:${IMAGE_TAG}"
                             helm upgrade --install flask-app ./charts \
                                 --namespace ${APP_NAMESPACE} \
                                 --set image.tag=${IMAGE_TAG} \
                                 --set image.repository=${IMAGE_NAME} \
+                                --kube-context=infra-cluster \
                                 --wait \
                                 --timeout=5m
                         '''
@@ -197,16 +207,17 @@ spec:
                             echo "Aguardando deployment ficar pronto..."
                             kubectl wait --for=condition=available deployment/flask-app \
                                 --namespace=${APP_NAMESPACE} \
+                                --context=infra-cluster \
                                 --timeout=300s
                             
                             echo "Verificando health dos pods..."
-                            kubectl get pods -n ${APP_NAMESPACE} -l app.kubernetes.io/name=flask-app
+                            kubectl get pods -n ${APP_NAMESPACE} -l app.kubernetes.io/name=flask-app --context=infra-cluster
                             
                             echo "Verificando serviços..."
-                            kubectl get svc -n ${APP_NAMESPACE}
+                            kubectl get svc -n ${APP_NAMESPACE} --context=infra-cluster
                             
                             echo "Verificando ingress..."
-                            kubectl get ingress -n ${APP_NAMESPACE} || echo "Nenhum ingress encontrado"
+                            kubectl get ingress -n ${APP_NAMESPACE} --context=infra-cluster || echo "Nenhum ingress encontrado"
                         '''
                         echo "Health check completed successfully!"
                     }
