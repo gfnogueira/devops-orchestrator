@@ -55,9 +55,10 @@ spec:
         }
     }
 
-    triggers {
-        pollSCM('H/2 * * * *')
-    }
+    //triggers {
+    //    // Disabled automatic polling - use webhooks instead
+    //    // pollSCM('H/2 * * * *')
+    //}
 
     environment {
         DOCKER_REGISTRY = 'docker.io'
@@ -70,9 +71,31 @@ spec:
         buildDiscarder(logRotator(numToKeepStr: '10'))
         timeout(time: 30, unit: 'MINUTES')
         disableConcurrentBuilds()
+        skipStagesAfterUnstable()
     }
 
     stages {
+        stage('Branch Check') {
+            steps {
+                script {
+                    def currentBranch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+                    echo "Current branch detected: ${currentBranch}"
+                    
+                    def isMainBranch = currentBranch == 'main' || currentBranch == 'master' || 
+                                     currentBranch.endsWith('/main') || currentBranch.endsWith('/master')
+                    
+                    if (!isMainBranch) {
+                        echo "⚠️ Branch '${currentBranch}' is not main/master. Skipping build and deployment stages."
+                        echo "✅ This will only run tests and security scans for feature branches."
+                        env.SKIP_BUILD_DEPLOY = 'true'
+                    } else {
+                        echo "✅ Branch '${currentBranch}' is main/master. Will proceed with full pipeline."
+                        env.SKIP_BUILD_DEPLOY = 'false'
+                    }
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
                 script {
@@ -168,7 +191,11 @@ spec:
             when {
                 expression {
                     def b = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
-                    b == 'main' || b == 'master' || b.endsWith('/main') || b.endsWith('/master')
+                    def isMainBranch = b == 'main' || b == 'master' || b.endsWith('/main') || b.endsWith('/master')
+                    if (!isMainBranch) {
+                        echo "⚠️ Skipping Docker build - branch '${b}' is not main/master"
+                    }
+                    return isMainBranch
                 }
             }
             steps {
@@ -205,7 +232,11 @@ spec:
             when {
                 expression {
                     def b = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
-                    b == 'main' || b == 'master' || b.endsWith('/main') || b.endsWith('/master')
+                    def isMainBranch = b == 'main' || b == 'master' || b.endsWith('/main') || b.endsWith('/master')
+                    if (!isMainBranch) {
+                        echo "⚠️ Skipping deployment - branch '${b}' is not main/master"
+                    }
+                    return isMainBranch
                 }
             }
             steps {
@@ -293,7 +324,11 @@ spec:
             when {
                 expression {
                     def b = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
-                    b == 'main' || b == 'master' || b.endsWith('/main') || b.endsWith('/master')
+                    def isMainBranch = b == 'main' || b == 'master' || b.endsWith('/main') || b.endsWith('/master')
+                    if (!isMainBranch) {
+                        echo "⚠️ Skipping health check - branch '${b}' is not main/master"
+                    }
+                    return isMainBranch
                 }
             }
             steps {
