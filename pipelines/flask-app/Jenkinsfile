@@ -25,7 +25,7 @@ spec:
     }
 
     triggers {
-        pollSCM('H/2 * * * *')  // Poll Git a cada 2 minutos
+        pollSCM('H/2 * * * *')
     }
 
     environment {
@@ -67,27 +67,27 @@ spec:
                     script {
                         echo "Installing Python dependencies and quality tools..."
                         sh '''
-                            pwd
-                            ls -la
                             python3 -m venv venv
                             . venv/bin/activate
-                            pip3 install --upgrade pip setuptools
-                            pip3 install --force-reinstall certifi
-                            pip3 install -r requirements.txt
-                            pip3 install safety bandit
+                            pip install --upgrade pip setuptools
+                            pip install --force-reinstall certifi
+                            pip install -r requirements.txt
+                            pip install bandit safety pytest pytest-cov
                         '''
                         echo "Dependencies and tools installed"
                     }
                 }
             }
         }
+
         stage('Run Tests') {
             steps {
                 container('devops-agent') {
                     script {
                         echo "Running tests with coverage..."
                         sh '''
-                            python3 -m pytest tests/ -v --cov=app --cov-report=xml --cov-report=html
+                            . venv/bin/activate
+                            PYTHONPATH=. venv/bin/pytest tests/ -v --cov=app --cov-report=xml --cov-report=html
                         '''
                         echo "Tests completed"
                     }
@@ -95,23 +95,31 @@ spec:
             }
             post {
                 always {
-                    script {
-                        echo "Archiving test results..."
-                        archiveArtifacts artifacts: 'htmlcov/**', allowEmptyArchive: true
-                    }
+                    echo "Archiving test coverage reports..."
+                    publishHTML(target: [
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'htmlcov',
+                        reportFiles: 'index.html',
+                        reportName: 'Cobertura de Testes'
+                    ])
+                    archiveArtifacts artifacts: 'htmlcov/**', allowEmptyArchive: true
                 }
             }
         }
+
         stage('Security Scan') {
             steps {
                 container('devops-agent') {
                     script {
                         echo "Running security scans..."
                         sh '''
+                            . venv/bin/activate
                             echo "Checking for vulnerable dependencies..."
-                            safety check
+                            venv/bin/safety check || true
                             echo "Running static security analysis..."
-                            bandit -r app/ -f json -o bandit-report.json || true
+                            venv/bin/bandit -r app/ -f json -o bandit-report.json || true
                         '''
                         echo "Security scan completed"
                     }
@@ -158,28 +166,25 @@ spec:
                         echo "Checking cluster connectivity and deploying..."
                         sh '''
                             echo "Using image: ${IMAGE_NAME}:${IMAGE_TAG}"
-                            
+
                             echo "Checking helm version..."
                             helm version
-                            
+
                             echo "Checking kubectl version..."
                             kubectl version --client
-                            
+
                             echo "Checking available contexts..."
                             kubectl config get-contexts || echo "No contexts available"
-                            
-                            echo "Checking current context..."
-                            kubectl config current-context || echo "No current context set"
-                            
+
                             echo "Trying to set context to infra-cluster..."
-                            kubectl config use-context infra-cluster || echo "Could not set context to infra-cluster"
-                            
-                            echo "Checking cluster info..."
-                            kubectl cluster-info || echo "Could not connect to cluster"
-                            
+                            kubectl config use-context infra-cluster || echo "Could not set context"
+
+                            echo "Validating authentication permissions..."
+                            kubectl auth can-i get pods || { echo "⚠️ Jenkins user is not authorized on the cluster!"; exit 1; }
+
                             echo "Checking if namespace ${APP_NAMESPACE} exists..."
                             kubectl get namespace ${APP_NAMESPACE} || echo "Namespace ${APP_NAMESPACE} not found"
-                            
+
                             echo "Deploying with helm..."
                             helm upgrade --install flask-app ./charts \
                                 --namespace ${APP_NAMESPACE} \
@@ -206,22 +211,21 @@ spec:
                     script {
                         echo "Running health checks..."
                         sh '''
-                            echo "Setting kubectl context..."
                             kubectl config use-context infra-cluster || echo "Could not set context"
-                            
-                            echo "Aguardando deployment ficar pronto..."
+
+                            echo "Waiting for deployment to be ready..."
                             kubectl wait --for=condition=available deployment/flask-app \
                                 --namespace=${APP_NAMESPACE} \
                                 --timeout=300s || echo "Wait failed"
-                            
-                            echo "Verificando health dos pods..."
+
+                            echo "Checking pod status..."
                             kubectl get pods -n ${APP_NAMESPACE} -l app.kubernetes.io/name=flask-app || echo "Could not get pods"
-                            
-                            echo "Verificando serviços..."
+
+                            echo "Checking services..."
                             kubectl get svc -n ${APP_NAMESPACE} || echo "Could not get services"
-                            
-                            echo "Verificando ingress..."
-                            kubectl get ingress -n ${APP_NAMESPACE} || echo "Nenhum ingress encontrado"
+
+                            echo "Checking ingress..."
+                            kubectl get ingress -n ${APP_NAMESPACE} || echo "No ingress found"
                         '''
                         echo "Health check completed successfully!"
                     }
@@ -233,23 +237,20 @@ spec:
     post {
         always {
             script {
-                // Remove Python cache and test artifact directories before workspace cleanup
                 container('devops-agent') {
                     sh '''
                         find . -type d -name "__pycache__" -exec rm -rf {} +
-                        rm -rf .pytest_cache
-                        rm -rf htmlcov
+                        rm -rf .pytest_cache htmlcov venv
                     '''
                 }
-                // Limpa workspace
                 deleteDir()
             }
         }
         success {
-            echo 'Pipeline executed successfully!'
+            echo '✅ Pipeline executed successfully!'
         }
         failure {
-            echo 'Pipeline failed!'
+            echo '❌ Pipeline failed!'
         }
     }
 }

@@ -12,7 +12,8 @@ ENV GO_VERSION=1.21.0 \
 
 # Basic packages + Docker
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl unzip git gnupg wget lsb-release make build-essential bash \
+    ca-certificates curl unzip git gnupg wget lsb-release make build-essential bash \
+    python3 python3-pip python3-venv \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
     && echo "deb [arch=arm64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
@@ -58,5 +59,17 @@ RUN wget -q https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSI
  && tofu version \
  && kubectl version --client=true \
  && helm version
+
+# Cleanup
+RUN rm -rf /var/lib/apt/lists/* \
+ && rm -rf /tmp/* \
+ && rm -rf /usr/local/go/pkg/* \
+ && rm -rf /usr/local/go/src/* \
+ && rm -rf /usr/local/go/bin/*_test \
+ && rm -rf /usr/local/go/pkg/tool/linux_arm64 \
+ && rm -rf /usr/local/go/pkg/obj \
+ && rm -rf /usr/local/go/pkg/cmd \      
+ && apt-get purge -y build-essential make \
+ && apt-get autoremove -y
 
 USER jenkins

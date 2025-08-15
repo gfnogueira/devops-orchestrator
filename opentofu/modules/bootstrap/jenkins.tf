@@ -102,6 +102,7 @@ resource "helm_release" "jenkins" {
         installPlugins = [
           "configuration-as-code",
           "pipeline-stage-view",
+          "htmlpublisher",
           "kubernetes", 
           "workflow-aggregator",
           "matrix-auth",

@@ -8,6 +8,7 @@ This project uses [OpenTofu](https://opentofu.org/) to provision and manage the 
 
 1. **Apply the Minikube cluster resource:**
    ```bash
+   cd ./devops-orchestrator/opentofu/environments/infra-cluster
    tofu apply -auto-approve -target=null_resource.minikube_cluster
    ```
 
