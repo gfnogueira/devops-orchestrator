@@ -69,6 +69,7 @@ spec:
     options {
         buildDiscarder(logRotator(numToKeepStr: '10'))
         timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
     }
 
     stages {
@@ -166,7 +167,8 @@ spec:
         stage('Build & Push Docker Image') {
             when {
                 expression {
-                    env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop'
+                    def b = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+                    b == 'main' || b == 'master' || b.endsWith('/main') || b.endsWith('/master')
                 }
             }
             steps {
@@ -188,9 +190,6 @@ spec:
 
                         echo "Building Docker image locally: ${imageName}"
                         sh """
-                            echo "Configuring Docker to use Minikube's daemon..."
-                            eval \$(minikube -p infra-cluster docker-env)
-
                             echo "Building Docker image..."
                             docker build -t ${imageName} -t ${latestImage} .
                             echo "✅ Docker image created locally: ${imageName}"
@@ -205,7 +204,8 @@ spec:
         stage('Deploy to Developer') {
             when {
                 expression {
-                    env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop'
+                    def b = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+                    b == 'main' || b == 'master' || b.endsWith('/main') || b.endsWith('/master')
                 }
             }
             steps {
@@ -292,7 +292,8 @@ spec:
         stage('✅ Health Check') {
             when {
                 expression {
-                    env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop'
+                    def b = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+                    b == 'main' || b == 'master' || b.endsWith('/main') || b.endsWith('/master')
                 }
             }
             steps {
