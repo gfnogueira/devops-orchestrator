@@ -7,19 +7,50 @@ apiVersion: v1
 kind: Pod
 spec:
   serviceAccountName: jenkins
+  securityContext:
+    fsGroup: 999  # docker group id
+  initContainers:
+  - name: docker-sock-permission-fix
+    image: alpine:3.18
+    command: ['sh', '-c']
+    args:
+      - |
+        echo "Fixing Docker socket permissions..."
+        ls -la /var/run/docker.sock
+        # Make docker socket accessible to group 999 (docker group)
+        chown root:999 /var/run/docker.sock
+        chmod g+rw /var/run/docker.sock
+        echo "Docker socket permissions after fix:"
+        ls -la /var/run/docker.sock
+    securityContext:
+      runAsUser: 0
+      runAsGroup: 0
+      allowPrivilegeEscalation: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
   containers:
   - name: devops-agent
     image: gfnogueira/jenkins-devops-agent:latest
     command:
     - cat
     tty: true
+    securityContext:
+      runAsUser: 1000
+      runAsGroup: 999  # docker group
+      allowPrivilegeEscalation: false
     volumeMounts:
     - name: docker-sock
       mountPath: /var/run/docker.sock
+    - name: docker-config
+      mountPath: /home/jenkins/.docker
   volumes:
   - name: docker-sock
     hostPath:
       path: /var/run/docker.sock
+      type: Socket
+  - name: docker-config
+    emptyDir: {}
             '''
         }
     }
@@ -145,9 +176,26 @@ spec:
                         def imageName = "${IMAGE_NAME}:${imageTag}"
                         def latestImage = "${IMAGE_NAME}:latest"
 
+                        echo "Checking Docker daemon accessibility..."
+                        sh '''
+                            echo "Current user: $(whoami)"
+                            echo "User groups: $(groups)"
+                            echo "Docker socket permissions:"
+                            ls -la /var/run/docker.sock
+                            echo "Testing Docker daemon connection:"
+                            docker version
+                        '''
+
                         echo "Building Docker image locally: ${imageName}"
-                        sh "docker build -t ${imageName} -t ${latestImage} ."
-                        echo "Docker image created locally on Jenkins agent."
+                        sh """
+                            echo "Configuring Docker to use Minikube's daemon..."
+                            eval \$(minikube -p infra-cluster docker-env)
+
+                            echo "Building Docker image..."
+                            docker build -t ${imageName} -t ${latestImage} .
+                            echo "✅ Docker image created locally: ${imageName}"
+                            docker images | grep flask-devops-app
+                        """
                         env.IMAGE_TAG = imageTag
                     }
                 }
@@ -163,6 +211,31 @@ spec:
             steps {
                 container('devops-agent') {
                     script {
+                        echo "Testing image locally before deployment..."
+                        sh '''
+                            echo "Testing if the Docker image runs correctly..."
+                            
+                            # Test the image locally first
+                            echo "Starting container test..."
+                            docker run -d --name flask-test-${BUILD_NUMBER} -p 5555:5000 ${IMAGE_NAME}:${IMAGE_TAG}
+                            
+                            echo "Waiting for container to start..."
+                            sleep 15
+                            
+                            echo "Testing health endpoint..."
+                            docker exec flask-test-${BUILD_NUMBER} curl -f http://localhost:5000/health || {
+                                echo "❌ Health check failed, checking logs..."
+                                docker logs flask-test-${BUILD_NUMBER}
+                                docker stop flask-test-${BUILD_NUMBER}
+                                docker rm flask-test-${BUILD_NUMBER}
+                                exit 1
+                            }
+                            
+                            echo "✅ Local test passed, cleaning up..."
+                            docker stop flask-test-${BUILD_NUMBER}
+                            docker rm flask-test-${BUILD_NUMBER}
+                        '''
+                        
                         echo "Checking cluster connectivity and deploying..."
                         sh '''
                             echo "Using image: ${IMAGE_NAME}:${IMAGE_TAG}"
@@ -176,8 +249,8 @@ spec:
                             echo "Checking available contexts..."
                             kubectl config get-contexts || echo "No contexts available"
 
-                            echo "Trying to set context to infra-cluster..."
-                            kubectl config use-context infra-cluster || echo "Could not set context"
+                            echo "Checking current context..."
+                            kubectl config current-context || echo "No context set"
 
                             echo "Validating authentication permissions..."
                             kubectl auth can-i get pods || { echo "⚠️ Jenkins user is not authorized on the cluster!"; exit 1; }
@@ -185,14 +258,29 @@ spec:
                             echo "Checking if namespace ${APP_NAMESPACE} exists..."
                             kubectl get namespace ${APP_NAMESPACE} || echo "Namespace ${APP_NAMESPACE} not found"
 
+                            echo "Listing built Docker images..."
+                            docker images | grep flask-devops-app
+
+                            echo "Cleaning up any conflicting ServiceMonitors..."
+                            kubectl delete servicemonitor flask-app -n observability --ignore-not-found=true || echo "No conflicting ServiceMonitor found"
+
+                            echo "Cleaning up any previous releases..."
+                            helm uninstall flask-app -n ${APP_NAMESPACE} || echo "No previous release found"
+                            helm uninstall flask-app -n jenkins || echo "No previous release found in jenkins namespace"
+                            
+                            echo "Listing all helm releases to check for orphans..."
+                            helm list -A | grep flask-app || echo "No flask-app releases found"
+
                             echo "Deploying with helm..."
                             helm upgrade --install flask-app ./charts \
                                 --namespace ${APP_NAMESPACE} \
                                 --create-namespace \
                                 --set image.tag=${IMAGE_TAG} \
                                 --set image.repository=${IMAGE_NAME} \
+                                --set image.pullPolicy=Never \
                                 --wait \
-                                --timeout=5m
+                                --timeout=15m \
+                                --debug
                         '''
                         echo "✅ Deployment completed"
                     }
@@ -209,23 +297,43 @@ spec:
             steps {
                 container('devops-agent') {
                     script {
-                        echo "Running health checks..."
+                        echo "Running comprehensive health checks..."
                         sh '''
-                            kubectl config use-context infra-cluster || echo "Could not set context"
+                            echo "Checking current context..."
+                            kubectl config current-context || echo "No context set"
 
-                            echo "Waiting for deployment to be ready..."
+                            echo "Checking pod status first..."
+                            kubectl get pods -n ${APP_NAMESPACE} -l app.kubernetes.io/name=flask-app -o wide || echo "Could not get pods"
+
+                            echo "Describing pods for detailed troubleshooting..."
+                            kubectl describe pods -n ${APP_NAMESPACE} -l app.kubernetes.io/name=flask-app || echo "Could not describe pods"
+
+                            echo "Checking pod logs..."
+                            kubectl logs -n ${APP_NAMESPACE} -l app.kubernetes.io/name=flask-app --tail=50 || echo "Could not get logs"
+
+                            echo "Checking events in namespace..."
+                            kubectl get events -n ${APP_NAMESPACE} --sort-by='.metadata.creationTimestamp' --field-selector type=Warning || echo "Could not get events"
+
+                            echo "Waiting for deployment to be ready (with timeout)..."
                             kubectl wait --for=condition=available deployment/flask-app \
                                 --namespace=${APP_NAMESPACE} \
-                                --timeout=300s || echo "Wait failed"
+                                --timeout=300s || {
+                                echo "❌ Deployment failed to become ready"
+                                echo "Final pod status:"
+                                kubectl get pods -n ${APP_NAMESPACE} -l app.kubernetes.io/name=flask-app -o wide
+                                echo "Pod logs:"
+                                kubectl logs -n ${APP_NAMESPACE} -l app.kubernetes.io/name=flask-app --tail=100
+                                exit 1
+                            }
 
-                            echo "Checking pod status..."
-                            kubectl get pods -n ${APP_NAMESPACE} -l app.kubernetes.io/name=flask-app || echo "Could not get pods"
-
-                            echo "Checking services..."
+                            echo "✅ Deployment is ready! Checking services..."
                             kubectl get svc -n ${APP_NAMESPACE} || echo "Could not get services"
 
                             echo "Checking ingress..."
                             kubectl get ingress -n ${APP_NAMESPACE} || echo "No ingress found"
+
+                            echo "Final pod status:"
+                            kubectl get pods -n ${APP_NAMESPACE} -l app.kubernetes.io/name=flask-app -o wide
                         '''
                         echo "Health check completed successfully!"
                     }

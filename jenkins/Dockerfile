@@ -60,6 +60,11 @@ RUN wget -q https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSI
  && kubectl version --client=true \
  && helm version
 
+# Add jenkins user to docker group and set up permissions
+RUN groupadd -f docker \
+ && usermod -aG docker jenkins \
+ && newgrp docker
+
 # Cleanup
 RUN rm -rf /var/lib/apt/lists/* \
  && rm -rf /tmp/* \
