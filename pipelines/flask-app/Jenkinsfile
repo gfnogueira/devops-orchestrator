@@ -263,6 +263,7 @@ spec:
 
                             echo "Cleaning up any conflicting ServiceMonitors..."
                             kubectl delete servicemonitor flask-app -n observability --ignore-not-found=true || echo "No conflicting ServiceMonitor found"
+                            kubectl delete servicemonitor flask-app -n developer --ignore-not-found=true || echo "No conflicting ServiceMonitor found"
 
                             echo "Cleaning up any previous releases..."
                             helm uninstall flask-app -n ${APP_NAMESPACE} || echo "No previous release found"
