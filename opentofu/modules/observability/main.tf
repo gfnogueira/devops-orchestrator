@@ -127,3 +127,61 @@ resource "kubernetes_config_map" "flask_application_dashboard" {
 
   depends_on = [helm_release.prometheus_stack]
 }
+
+#################################################################################
+## PROMETHEUS RBAC - ServiceMonitor Permissions
+#################################################################################
+#
+#resource "kubernetes_manifest" "prometheus_rbac_cross_namespace" {
+#  manifest = {
+#    apiVersion = "rbac.authorization.k8s.io/v1"
+#    kind       = "ClusterRole"
+#    metadata = {
+#      name = "prometheus-kube-cross-namespace"
+#      labels = {
+#        app                                = "kube-prometheus-stack-prometheus-cross-namespace"
+#        "app.kubernetes.io/instance"       = "prometheus"
+#        "app.kubernetes.io/managed-by"     = "Helm"
+#        "app.kubernetes.io/part-of"        = "kube-prometheus-stack"
+#        "app.kubernetes.io/version"        = "55.5.0"
+#        chart                              = "kube-prometheus-stack-55.5.0"
+#        heritage                           = "Helm"
+#        release                            = "prometheus"
+#      }
+#    }
+#    rules = [
+#      {
+#        apiGroups = [""]
+#        resources = [
+#          "nodes",
+#          "nodes/metrics",
+#          "services",
+#          "endpoints",
+#          "pods"
+#        ]
+#        verbs = ["get", "list", "watch"]
+#      },
+#      {
+#        apiGroups = ["networking.k8s.io"]
+#        resources = ["ingresses"]
+#        verbs     = ["get", "list", "watch"]
+#      },
+#      {
+#        nonResourceURLs = ["/metrics", "/metrics/cadvisor"]
+#        verbs           = ["get"]
+#      },
+#      # ServiceMonitors for Auto-Discovery
+#      {
+#        apiGroups = ["monitoring.coreos.com"]
+#        resources = [
+#          "servicemonitors",
+#          "podmonitors",
+#          "probes"
+#        ]
+#        verbs = ["get", "list", "watch"]
+#      }
+#    ]
+#  }
+#
+#  depends_on = [helm_release.prometheus_stack]
+#}

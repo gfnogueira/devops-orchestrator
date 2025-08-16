@@ -293,8 +293,8 @@ spec:
                             docker images | grep flask-devops-app
 
                             echo "Cleaning up any conflicting ServiceMonitors..."
-                            kubectl delete servicemonitor flask-app -n observability --ignore-not-found=true || echo "No conflicting ServiceMonitor found"
-                            kubectl delete servicemonitor flask-app -n developer --ignore-not-found=true || echo "No conflicting ServiceMonitor found"
+                            #kubectl delete servicemonitor flask-app -n observability --ignore-not-found=true || echo "No conflicting ServiceMonitor found"
+                            #kubectl delete servicemonitor flask-app -n developer --ignore-not-found=true || echo "No conflicting ServiceMonitor found"
 
                             echo "Cleaning up any previous releases..."
                             helm uninstall flask-app -n ${APP_NAMESPACE} || echo "No previous release found"
@@ -309,7 +309,7 @@ spec:
                                 --create-namespace \
                                 --set image.tag=${IMAGE_TAG} \
                                 --set image.repository=${IMAGE_NAME} \
-                                --set image.pullPolicy=Never \
+                                --set image.pullPolicy=IfNotPresent \
                                 --wait \
                                 --timeout=15m \
                                 --debug
