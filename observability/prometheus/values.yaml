@@ -27,6 +27,7 @@ prometheus:
     # ServiceMonitor for applications
     serviceMonitorSelectorNilUsesHelmValues: false
     serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
     
     # Rules for applications
     ruleSelectorNilUsesHelmValues: false

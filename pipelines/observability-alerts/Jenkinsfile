@@ -47,6 +47,21 @@ pipeline {
             }
         }
 
+        stage('Lint - tflint') {
+            steps {
+                script {
+                    echo 'Running TFLint...'
+                    dir('opentofu/environments/infra-cluster/observability-alerts') {
+                        sh '''
+                            set -eux
+                            tflint --init
+                            tflint --recursive
+                        '''
+                    }
+                }
+            }
+        }        
+
         stage('Initialize') {
             steps {
                 script {
@@ -71,6 +86,7 @@ pipeline {
                 }
             }
         }
+
 
         stage('Plan') {
             steps {

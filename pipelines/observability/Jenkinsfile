@@ -58,6 +58,21 @@ pipeline {
                 }
             }
         }
+
+        stage('Lint - tflint') {
+            steps {
+                script {
+                    echo 'Running TFLint...'
+                    dir('opentofu/environments/infra-cluster/observability') {
+                        sh '''
+                            set -eux
+                            tflint --init
+                            tflint --recursive
+                        '''
+                    }
+                }
+            }
+        }         
         
         stage('Initialize') {
             steps {
