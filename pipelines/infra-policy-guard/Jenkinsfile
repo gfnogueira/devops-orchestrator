@@ -1,0 +1,102 @@
+pipeline {
+    agent {
+        kubernetes {
+            label 'devops-agent'
+            defaultContainer 'jnlp'
+            serviceAccount 'jenkins'
+        }
+    }
+
+    environment {
+        JENKINS_HOME_AGENT = '/home/jenkins/agent/workspace/infra-policy-guard/'
+        PROJECT_BASE       = 'opentofu/environments/infra-cluster'
+        POLICY_PATH        = "${JENKINS_HOME_AGENT}/${PROJECT_BASE}/policy"
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Discover Terraform Projects') {
+            steps {
+                script {
+                    env.PROJECT_DIRS = sh(
+                        script: "find ${env.PROJECT_BASE} -mindepth 1 -maxdepth 1 -type d -exec test -e '{}/main.tf' ';' -print",
+                        returnStdout: true
+                    ).trim().split("\n")
+                    echo "Found Terraform directories:\n${env.PROJECT_DIRS.join('\n')}"
+                }
+            }
+        }
+
+        stage('Run Validations') {
+            steps {
+                sh '''
+                    echo "Searching for Terraform projects in ${PROJECT_BASE}..."
+                    for dir in $(find ${PROJECT_BASE} -mindepth 1 -maxdepth 1 -type d -exec test -e '{}/main.tf' ';' -print); do
+                        echo ""
+                        echo "========================================"
+                        echo " VALIDATING: $dir"
+                        echo "========================================"
+                        cd "$dir"
+
+                        echo "TFLINT] Linting Terraform code..."
+                        tflint --init
+                        tflint --recursive
+
+                        echo "[TOFU] Running plan..."
+                        tofu init -input=false
+                        tofu plan -out=tfplan -input=false || true
+                        tofu show -json tfplan > tfplan.json
+
+                        echo "[TOFU] Resources found in plan:"
+                        jq '.planned_values.root_module.resources // [] | .[] | {type: .type, name: .name}' tfplan.json || echo "⚠️ No resources found in plan."
+
+                        echo "[CONTEST] Testing with policies..."
+                        echo "Files in current folder:"
+                        ls -la
+                        echo "Path: $(pwd)"
+
+                        # Details
+                        echo "[DEBUG] Complete policy outline:"
+                        conftest test tfplan.json --policy ${POLICY_PATH} --trace
+
+                        echo "[TERRAFORM-DOCS] Validating documentation..."
+                        terraform-docs markdown table . > /tmp/generated.md
+                        if [ -f README.md ]; then
+                            if ! diff -q /tmp/generated.md README.md; then
+                                echo "❌ README.md is outdated in ${PWD}. Please update with terraform-docs."
+                                exit 1
+                            else
+                                echo "✅ README.md is up-to-date."
+                            fi
+                        else
+                            echo "⚠️ No README.md found to validate."
+                        fi
+
+                        echo "✅ DONE: $dir"
+                        echo ""
+                        cd - > /dev/null
+                    done
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ All Terraform validations passed!'
+        }
+        failure {
+            echo '❌ One or more validations failed!'
+        }
+    }
+}
