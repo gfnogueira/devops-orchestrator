@@ -65,7 +65,10 @@ pipeline {
                         ls -la
                         echo "Path: $(pwd)"
 
-                        # Details
+                        # Conftest 
+                        echo "[CONFTEST] Policy summary table:"
+                        conftest test tfplan.json --policy ${POLICY_PATH} --output table
+
                         echo "[DEBUG] Complete policy outline:"
                         conftest test tfplan.json --policy ${POLICY_PATH} --trace
 

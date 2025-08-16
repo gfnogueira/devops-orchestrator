@@ -1,0 +1,110 @@
+pipeline {
+    agent {
+        kubernetes {
+            label 'devops-agent'
+            defaultContainer 'jnlp'
+            serviceAccount 'jenkins'
+        }
+    }
+
+    environment {
+        JENKINS_HOME_AGENT = '/home/jenkins/agent/workspace/infra-policy-guard/'
+        PROJECT_BASE       = 'opentofu/environments/infra-cluster'
+        POLICY_PATH        = "${JENKINS_HOME_AGENT}/${PROJECT_BASE}/policy"
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Discover Terraform Projects') {
+            steps {
+                script {
+                    env.PROJECT_DIRS = sh(
+                        script: "find ${env.PROJECT_BASE} -mindepth 1 -maxdepth 1 -type d -exec test -e '{}/main.tf' ';' -print",
+                        returnStdout: true
+                    ).trim().split("\n")
+                    echo "Found Terraform directories:\n${env.PROJECT_DIRS.join('\n')}"
+                }
+            }
+        }
+
+    stage('Run Validations') {
+        steps {
+            script {
+                def jobs = [:]
+    
+                for (dir in env.PROJECT_DIRS) {
+                    def dirName = dir.split('/').last()
+    
+                    jobs["Validate ${dirName}"] = {
+                        stage("TFLINT - ${dirName}") {
+                            dir(dir) {
+                                sh "tflint --init"
+                                sh "tflint --recursive"
+                            }
+                        }
+    
+                        stage("TOFU PLAN - ${dirName}") {
+                            dir(dir) {
+                                sh "tofu init -input=false"
+                                sh "tofu plan -out=tfplan -input=false || true"
+                                sh "tofu show -json tfplan > tfplan.json"
+                            }
+                        }
+    
+                        stage("RESOURCES - ${dirName}") {
+                            dir(dir) {
+                                sh "jq '.planned_values.root_module.resources // [] | .[] | {type: .type, name: .name}' tfplan.json || echo '⚠️ No resources found in plan.'"
+                            }
+                        }
+    
+                        stage("POLICIES - ${dirName}") {
+                            dir(dir) {
+                                sh "conftest test tfplan.json --policy ${POLICY_PATH} --output table"
+                            }
+                        }
+    
+                        stage("DOC CHECK - ${dirName}") {
+                            dir(dir) {
+                                sh '''
+                                    terraform-docs markdown table . > /tmp/generated.md
+                                    if [ -f README.md ]; then
+                                        if ! diff -q /tmp/generated.md README.md; then
+                                            echo "❌ README.md is outdated in ${PWD}. Please update with terraform-docs."
+                                            exit 1
+                                        else
+                                            echo "✅ README.md is up-to-date."
+                                        fi
+                                    else
+                                        echo "⚠️ No README.md found to validate."
+                                    fi
+                                '''
+                            }
+                        }
+                    }
+                }
+    
+                parallel jobs
+            }
+        } 
+    }
+}
+
+    post {
+        success {
+            echo '✅ All Terraform validations passed!'
+        }
+        failure {
+            echo '❌ One or more validations failed!'
+        }
+    }
+}
