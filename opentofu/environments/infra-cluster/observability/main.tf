@@ -10,8 +10,8 @@ locals {
 module "observability" {
   source = "../../../modules/observability"
   
-  cluster_name         = local.cluster_name
-  environment          = local.environment
+  cluster_name            = local.cluster_name
+  environment             = local.environment
   observability_namespace = "observability"
   
   prometheus_enabled   = true

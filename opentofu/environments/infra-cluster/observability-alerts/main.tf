@@ -14,3 +14,9 @@ module "observability_alerts" {
   environment             = local.environment
   observability_namespace = "observability"
 }
+
+resource "kubernetes_namespace" "invalid" {
+  metadata {
+    name = "kata"
+  }
+}
