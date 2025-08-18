@@ -40,10 +40,16 @@ pipeline {
         stage('Validate Each Terraform Project') {
             steps {
                 script {
-                    for (dir in env.PROJECT_DIRS) {
-                        echo "\n🔍 Running validations for: ${dir}"
-                        dir(dir) {
-                            stage("📌 RULE 1: TFLINT (${dir})") {
+                    def projectDirs = sh(
+                        script: "find ${env.PROJECT_BASE} -mindepth 1 -maxdepth 1 -type d -exec test -e '{}/main.tf' ';' -print",
+                        returnStdout: true
+                    ).trim().split("\n")
+
+                    for (projectDir in projectDirs) {
+                        echo "\n🔍 Running validations for: ${projectDir}"
+
+                        dir(projectDir) {
+                            stage("1: TFLINT - ${projectDir}") {
                                 sh '''
                                     echo "[TFLINT] Initializing and linting..."
                                     tflint --init
@@ -51,7 +57,7 @@ pipeline {
                                 '''
                             }
 
-                            stage("📌 RULE 2: Terraform Plan (${dir})") {
+                            stage("2: Terraform Plan - ${projectDir}") {
                                 sh '''
                                     echo "[TOFU] Init and plan..."
                                     tofu init -input=false
@@ -63,12 +69,8 @@ pipeline {
                                 '''
                             }
 
-                            stage("📌 RULE 3: Conftest Policy Check (${dir})") {
+                            stage("3: Conftest Policy Check - ${projectDir}") {
                                 sh '''
-                                    echo "[CONTEST] Listing files and path..."
-                                    ls -la
-                                    pwd
-
                                     echo "[CONFTEST] Summary (table format):"
                                     conftest test tfplan.json --policy ${POLICY_PATH} --output table || true
 
@@ -77,9 +79,8 @@ pipeline {
                                 '''
                             }
 
-                            stage("📌 RULE 4: Terraform Docs Validation (${dir})") {
+                            stage("4: Terraform Docs - ${projectDir}") {
                                 sh '''
-                                    echo "[TERRAFORM-DOCS] Checking README.md..."
                                     terraform-docs markdown table . > /tmp/generated.md
 
                                     if [ -f README.md ]; then
@@ -95,28 +96,40 @@ pipeline {
                                 '''
                             }
 
-                            stage("📌 RULE 5: TFSec Security Scan (${dir})") {
+                            stage("5: TFSec - ${projectDir}") {
                                 sh '''
-                                    echo "[TFSEC] Scanning for security issues..."
+                                    echo "[TFSEC] Scanning..."
                                     tfsec . || true
                                 '''
                             }
 
-                            stage("📌 RULE 6: Checkov Compliance Scan (${dir})") {
-                                sh '''
-                                    echo "[CHECKOV] Running policy scan..."
-                                    checkov -d . --quiet || true
-                                '''
+                            //stage("6: Checkov - ${projectDir}") {
+                            //    sh '''
+                            //        echo "[CHECKOV] Running..."
+                            //        checkov -d . --quiet || true
+                            //    '''
+                            //}
+                            stage("6: Checkov - ${projectDir}") {
+                                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                                    sh '''
+                                        echo "[CHECKOV] Running..."
+                                        checkov -d . || {
+                                          echo "❌ Checkov found issues."
+                                          exit 1
+                                        }
+                                        echo "✅ Checkov passed."
+                                    '''
+                                }
                             }
 
-                            stage("📌 RULE 7: OPA Evaluation (${dir})") {
+                            stage("7: OPA Eval - ${projectDir}") {
                                 sh '''
-                                    echo "[OPA] Running manual policy check..."
+                                    echo "[OPA] Evaluating policies..."
                                     opa eval --format=pretty --input tfplan.json --data ${POLICY_PATH} "data.main.deny" || true
                                 '''
                             }
 
-                            echo "✅ Finished validations for: ${dir}\n"
+                            echo "✅ Finished: ${projectDir}\n"
                         }
                     }
                 }
