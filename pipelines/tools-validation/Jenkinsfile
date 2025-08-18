@@ -234,6 +234,78 @@ EOF
                 }
             }
         }
+        stage('OPA CLI Validation') {
+            steps {
+                script {
+                    echo "=== VALIDATING OPA CLI ==="
+                    sh '''
+                        echo "OPA Version:" | tee -a $TOOLS_REPORT
+                        opa version 2>&1 | tee -a $TOOLS_REPORT
+
+                        echo -e "\nTesting OPA eval:" | tee -a $TOOLS_REPORT
+                        echo '{"a":1}' > input.json
+                        opa eval --input input.json 'data' 2>&1 | tee -a $TOOLS_REPORT
+                        rm input.json
+                    '''
+                }
+            }
+        }
+        stage('tfsec Validation') {
+            steps {
+                script {
+                    echo "=== VALIDATING TFSEC ==="
+                    sh '''
+                        echo "tfsec Version:" | tee -a $TOOLS_REPORT
+                        tfsec --version 2>&1 | tee -a $TOOLS_REPORT
+
+                        echo -e "\nTesting tfsec:" | tee -a $TOOLS_REPORT
+                        mkdir -p test-tfsec
+                        cd test-tfsec
+                        cat > main.tf << 'EOF'
+resource "null_resource" "test" {}
+EOF
+                        tfsec . 2>&1 | tee -a ../$TOOLS_REPORT || true
+                        cd ..
+                        rm -rf test-tfsec
+                    '''
+                }
+            }
+        }
+        stage('Checkov Validation') {
+            steps {
+                script {
+                    echo "=== VALIDATING CHECKOV ==="
+                    sh '''
+                        echo "Checkov Version:" | tee -a $TOOLS_REPORT
+                        checkov --version 2>&1 | tee -a $TOOLS_REPORT
+
+                        echo -e "\nTesting Checkov:" | tee -a $TOOLS_REPORT
+                        mkdir -p test-checkov
+                        cd test-checkov
+                        cat > main.tf << 'EOF'
+resource "null_resource" "test" {}
+EOF
+                        checkov -d . 2>&1 | tee -a ../$TOOLS_REPORT || true
+                        cd ..
+                        rm -rf test-checkov
+                    '''
+                }
+            }
+        }
+        stage('kubectl & Helm Validation') {
+            steps {
+                script {
+                    echo "=== VALIDATING KUBECTL & HELM ==="
+                    sh '''
+                        echo "kubectl Version:" | tee -a $TOOLS_REPORT
+                        kubectl version --client 2>&1 | tee -a $TOOLS_REPORT
+
+                        echo "Helm Version:" | tee -a $TOOLS_REPORT
+                        helm version 2>&1 | tee -a $TOOLS_REPORT
+                    '''
+                }
+            }
+        }
     }
     
     post {
@@ -247,24 +319,20 @@ EOF
                     echo "Node: ${NODE_NAME}" | tee -a $TOOLS_REPORT
                 '''
             }
-            
             // Archive the report
             archiveArtifacts artifacts: 'tools-validation-report.txt', fingerprint: true
-            
             // Show report content in the console
             sh 'echo "=== REPORT CONTENT ==="; cat $TOOLS_REPORT'
         }
-        
         success {
             echo "✅ All tools have been successfully validated!"
         }
-        
         failure {
             echo "❌ Tool validation failed. Check the logs."
         }
-        
         cleanup {
             echo "Cleanup completed."
         }
     }
 }
+        
