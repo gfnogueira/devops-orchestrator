@@ -31,11 +31,22 @@ RUN wget -q https://go.dev/dl/go${GO_VERSION}.linux-arm64.tar.gz \
 RUN curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash \
  && tflint --version
 
+# --- Install tfsec
+RUN curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+
+# --- Install checkov
+RUN pip install --break-system-packages checkov
+
+# --- Install OPA CLI
+RUN curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_arm64_static \
+    && chmod +x opa && mv opa /usr/local/bin/
+
 # conftest (uses Linux_arm64 suffix)
 RUN wget -q https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_arm64.tar.gz \
  && tar -xzf conftest_${CONFTEST_VERSION}_Linux_arm64.tar.gz -C /usr/local/bin conftest \
  && rm conftest_${CONFTEST_VERSION}_Linux_arm64.tar.gz \
  && conftest --version
+
 
 # terraform-docs (linux-arm64)
 RUN wget -q https://github.com/terraform-docs/terraform-docs/releases/download/v${TERRAFORM_DOCS_VERSION}/terraform-docs-v${TERRAFORM_DOCS_VERSION}-linux-arm64.tar.gz \

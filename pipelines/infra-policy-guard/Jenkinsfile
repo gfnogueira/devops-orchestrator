@@ -37,59 +37,89 @@ pipeline {
             }
         }
 
-        stage('Run Validations') {
+        stage('Validate Each Terraform Project') {
             steps {
-                sh '''
-                    echo "Searching for Terraform projects in ${PROJECT_BASE}..."
-                    for dir in $(find ${PROJECT_BASE} -mindepth 1 -maxdepth 1 -type d -exec test -e '{}/main.tf' ';' -print); do
-                        echo ""
-                        echo "========================================"
-                        echo " VALIDATING: $dir"
-                        echo "========================================"
-                        cd "$dir"
+                script {
+                    for (dir in env.PROJECT_DIRS) {
+                        echo "\n🔍 Running validations for: ${dir}"
+                        dir(dir) {
+                            stage("📌 RULE 1: TFLINT (${dir})") {
+                                sh '''
+                                    echo "[TFLINT] Initializing and linting..."
+                                    tflint --init
+                                    tflint --recursive
+                                '''
+                            }
 
-                        echo "TFLINT] Linting Terraform code..."
-                        tflint --init
-                        tflint --recursive
+                            stage("📌 RULE 2: Terraform Plan (${dir})") {
+                                sh '''
+                                    echo "[TOFU] Init and plan..."
+                                    tofu init -input=false
+                                    tofu plan -out=tfplan -input=false || true
+                                    tofu show -json tfplan > tfplan.json
 
-                        echo "[TOFU] Running plan..."
-                        tofu init -input=false
-                        tofu plan -out=tfplan -input=false || true
-                        tofu show -json tfplan > tfplan.json
+                                    echo "[TOFU] Resources in plan:"
+                                    jq '.planned_values.root_module.resources // [] | .[] | {type: .type, name: .name}' tfplan.json || echo "⚠️ No resources found."
+                                '''
+                            }
 
-                        echo "[TOFU] Resources found in plan:"
-                        jq '.planned_values.root_module.resources // [] | .[] | {type: .type, name: .name}' tfplan.json || echo "⚠️ No resources found in plan."
+                            stage("📌 RULE 3: Conftest Policy Check (${dir})") {
+                                sh '''
+                                    echo "[CONTEST] Listing files and path..."
+                                    ls -la
+                                    pwd
 
-                        echo "[CONTEST] Testing with policies..."
-                        echo "Files in current folder:"
-                        ls -la
-                        echo "Path: $(pwd)"
+                                    echo "[CONFTEST] Summary (table format):"
+                                    conftest test tfplan.json --policy ${POLICY_PATH} --output table || true
 
-                        # Conftest 
-                        echo "[CONFTEST] Policy summary table:"
-                        conftest test tfplan.json --policy ${POLICY_PATH} --output table
+                                    echo "[CONFTEST] Trace (debug):"
+                                    conftest test tfplan.json --policy ${POLICY_PATH} --trace || true
+                                '''
+                            }
 
-                        echo "[DEBUG] Complete policy outline:"
-                        conftest test tfplan.json --policy ${POLICY_PATH} --trace
+                            stage("📌 RULE 4: Terraform Docs Validation (${dir})") {
+                                sh '''
+                                    echo "[TERRAFORM-DOCS] Checking README.md..."
+                                    terraform-docs markdown table . > /tmp/generated.md
 
-                        echo "[TERRAFORM-DOCS] Validating documentation..."
-                        terraform-docs markdown table . > /tmp/generated.md
-                        if [ -f README.md ]; then
-                            if ! diff -q /tmp/generated.md README.md; then
-                                echo "❌ README.md is outdated in ${PWD}. Please update with terraform-docs."
-                                exit 1
-                            else
-                                echo "✅ README.md is up-to-date."
-                            fi
-                        else
-                            echo "⚠️ No README.md found to validate."
-                        fi
+                                    if [ -f README.md ]; then
+                                        if ! diff -q /tmp/generated.md README.md; then
+                                            echo "❌ README.md is outdated. Please update it using terraform-docs."
+                                            exit 1
+                                        else
+                                            echo "✅ README.md is up-to-date."
+                                        fi
+                                    else
+                                        echo "⚠️ No README.md found."
+                                    fi
+                                '''
+                            }
 
-                        echo "✅ DONE: $dir"
-                        echo ""
-                        cd - > /dev/null
-                    done
-                '''
+                            stage("📌 RULE 5: TFSec Security Scan (${dir})") {
+                                sh '''
+                                    echo "[TFSEC] Scanning for security issues..."
+                                    tfsec . || true
+                                '''
+                            }
+
+                            stage("📌 RULE 6: Checkov Compliance Scan (${dir})") {
+                                sh '''
+                                    echo "[CHECKOV] Running policy scan..."
+                                    checkov -d . --quiet || true
+                                '''
+                            }
+
+                            stage("📌 RULE 7: OPA Evaluation (${dir})") {
+                                sh '''
+                                    echo "[OPA] Running manual policy check..."
+                                    opa eval --format=pretty --input tfplan.json --data ${POLICY_PATH} "data.main.deny" || true
+                                '''
+                            }
+
+                            echo "✅ Finished validations for: ${dir}\n"
+                        }
+                    }
+                }
             }
         }
     }
