@@ -12,7 +12,7 @@ ENV GO_VERSION=1.21.0 \
 
 # Basic packages + Docker
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl unzip git gnupg wget lsb-release make build-essential bash \
+    ca-certificates curl unzip git gnupg jq wget lsb-release make build-essential bash \
     python3 python3-pip python3-venv \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
