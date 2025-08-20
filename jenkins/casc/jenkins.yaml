@@ -91,10 +91,10 @@ jobs:
               }
           }
           
-          // Automatic triggers
-          triggers {
-              scm('H/15 * * * *')  // Polling a cada 15 minutos
-          }
+          //// Automatic triggers
+          //triggers {
+          //    scm('H/15 * * * *')  // Polling a cada 15 minutos
+          //}
           
           // Execution
           steps {
